@@ -1,7 +1,6 @@
 import { useCallback, useContext, useEffect, useState } from 'react';
 import { Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useConfig } from '@/components/config-provider';
 import { attemptsApi, projectsApi } from '@/lib/api';
 import type { GitBranch, TaskAttempt } from 'shared/types';
 import {
@@ -12,7 +11,6 @@ import {
   TaskExecutionStateContext,
   TaskSelectedAttemptContext,
 } from '@/components/context/taskDetailsContext.ts';
-import CreatePRDialog from '@/components/tasks/Toolbar/CreatePRDialog.tsx';
 import CreateAttempt from '@/components/tasks/Toolbar/CreateAttempt.tsx';
 import CurrentAttempt from '@/components/tasks/Toolbar/CurrentAttempt.tsx';
 
@@ -38,14 +36,11 @@ function TaskDetailsToolbar() {
 
   const [taskAttempts, setTaskAttempts] = useState<TaskAttempt[]>([]);
 
-  const { config } = useConfig();
 
   const [branches, setBranches] = useState<GitBranch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
 
-  const [selectedExecutor, setSelectedExecutor] = useState<string>(
-    config?.executor.type || 'claude'
-  );
+  const [selectedExecutor] = useState<string>('claude');
 
   // State for create attempt mode
   const [isInCreateAttemptMode, setIsInCreateAttemptMode] = useState(false);
@@ -56,8 +51,6 @@ function TaskDetailsToolbar() {
     useState<string>(selectedExecutor);
 
   // Branch status and git operations state
-  const [creatingPR, setCreatingPR] = useState(false);
-  const [showCreatePRDialog, setShowCreatePRDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchProjectBranches = useCallback(async () => {
@@ -75,12 +68,7 @@ function TaskDetailsToolbar() {
     fetchProjectBranches();
   }, [fetchProjectBranches]);
 
-  // Set default executor from config
-  useEffect(() => {
-    if (config && config.executor.type !== selectedExecutor) {
-      setSelectedExecutor(config.executor.type);
-    }
-  }, [config, selectedExecutor]);
+  // Set default executor from config - removed since we no longer have executor in config
 
   // Set create attempt mode when there are no attempts
   useEffect(() => {
@@ -230,8 +218,6 @@ function TaskDetailsToolbar() {
                   taskAttempts={taskAttempts}
                   selectedBranch={selectedBranch}
                   setError={setError}
-                  setShowCreatePRDialog={setShowCreatePRDialog}
-                  creatingPR={creatingPR}
                   handleEnterCreateAttemptMode={handleEnterCreateAttemptMode}
                   availableExecutors={availableExecutors}
                 />
@@ -264,14 +250,6 @@ function TaskDetailsToolbar() {
         )}
       </div>
 
-      <CreatePRDialog
-        creatingPR={creatingPR}
-        setShowCreatePRDialog={setShowCreatePRDialog}
-        showCreatePRDialog={showCreatePRDialog}
-        setCreatingPR={setCreatingPR}
-        setError={setError}
-        branches={branches}
-      />
     </>
   );
 }

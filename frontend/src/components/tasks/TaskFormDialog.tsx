@@ -16,8 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useConfig } from '@/components/config-provider';
-import type { TaskStatus, ExecutorConfig } from 'shared/types';
+import type { TaskStatus } from 'shared/types';
 
 interface Task {
   id: string;
@@ -34,11 +33,11 @@ interface TaskFormDialogProps {
   onOpenChange: (open: boolean) => void;
   task?: Task | null; // Optional for create mode
   projectId?: string; // For file search functionality
-  onCreateTask?: (title: string, description: string) => Promise<void>;
+  onCreateTask?: (title: string, description: string, maxReward: number) => Promise<void>;
   onCreateAndStartTask?: (
     title: string,
     description: string,
-    executor?: ExecutorConfig
+    maxReward: number
   ) => Promise<void>;
   onUpdateTask?: (
     title: string,
@@ -58,11 +57,11 @@ export function TaskFormDialog({
 }: TaskFormDialogProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [maxReward, setMaxReward] = useState<number>(0);
   const [status, setStatus] = useState<TaskStatus>('todo');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmittingAndStart, setIsSubmittingAndStart] = useState(false);
 
-  const { config } = useConfig();
   const isEditMode = Boolean(task);
 
   useEffect(() => {
@@ -75,25 +74,28 @@ export function TaskFormDialog({
       // Create mode - reset to defaults
       setTitle('');
       setDescription('');
+      setMaxReward(0);
       setStatus('todo');
     }
   }, [task, isOpen]);
 
   const handleSubmit = async () => {
     if (!title.trim()) return;
+    if (!isEditMode && maxReward <= 0) return;
 
     setIsSubmitting(true);
     try {
       if (isEditMode && onUpdateTask) {
         await onUpdateTask(title, description, status);
       } else if (!isEditMode && onCreateTask) {
-        await onCreateTask(title, description);
+        await onCreateTask(title, description, maxReward);
       }
 
       // Reset form on successful creation
       if (!isEditMode) {
         setTitle('');
         setDescription('');
+        setMaxReward(0);
         setStatus('todo');
       }
 
@@ -105,16 +107,18 @@ export function TaskFormDialog({
 
   const handleCreateAndStart = useCallback(async () => {
     if (!title.trim()) return;
+    if (!isEditMode && maxReward <= 0) return;
 
     setIsSubmittingAndStart(true);
     try {
       if (!isEditMode && onCreateAndStartTask) {
-        await onCreateAndStartTask(title, description, config?.executor);
+        await onCreateAndStartTask(title, description, maxReward);
       }
 
       // Reset form on successful creation
       setTitle('');
       setDescription('');
+      setMaxReward(0);
       setStatus('todo');
 
       onOpenChange(false);
@@ -124,7 +128,7 @@ export function TaskFormDialog({
   }, [
     title,
     description,
-    config?.executor,
+    maxReward,
     isEditMode,
     onCreateAndStartTask,
     onOpenChange,
@@ -139,6 +143,7 @@ export function TaskFormDialog({
     } else {
       setTitle('');
       setDescription('');
+      setMaxReward(0);
       setStatus('todo');
     }
     onOpenChange(false);
@@ -225,6 +230,25 @@ export function TaskFormDialog({
             />
           </div>
 
+          {!isEditMode && (
+            <div>
+              <Label htmlFor="max-reward">Max Reward *</Label>
+              <Input
+                id="max-reward"
+                type="number"
+                min="1"
+                step="1"
+                value={maxReward || ''}
+                onChange={(e) => setMaxReward(Number(e.target.value) || 0)}
+                placeholder="Enter maximum reward amount"
+                disabled={isSubmitting || isSubmittingAndStart}
+              />
+              <p className="text-sm text-muted-foreground mt-1">
+                Maximum reward amount for this task (required)
+              </p>
+            </div>
+          )}
+
           {isEditMode && (
             <div>
               <Label htmlFor="task-status">Status</Label>
@@ -268,7 +292,7 @@ export function TaskFormDialog({
                   variant="outline"
                   onClick={handleSubmit}
                   disabled={
-                    isSubmitting || isSubmittingAndStart || !title.trim()
+                    isSubmitting || isSubmittingAndStart || !title.trim() || maxReward <= 0
                   }
                 >
                   {isSubmitting ? 'Creating...' : 'Create Task'}
@@ -277,7 +301,7 @@ export function TaskFormDialog({
                   <Button
                     onClick={handleCreateAndStart}
                     disabled={
-                      isSubmitting || isSubmittingAndStart || !title.trim()
+                      isSubmitting || isSubmittingAndStart || !title.trim() || maxReward <= 0
                     }
                   >
                     {isSubmittingAndStart

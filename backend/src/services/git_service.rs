@@ -6,10 +6,7 @@ use git2::{
 use regex;
 use tracing::{debug, info};
 
-use crate::{
-    models::task_attempt::{DiffChunk, DiffChunkType, FileDiff, WorktreeDiff},
-    utils::worktree_manager::WorktreeManager,
-};
+use crate::models::task_attempt::{DiffChunk, DiffChunkType, FileDiff, WorktreeDiff};
 
 #[derive(Debug)]
 pub enum GitServiceError {
@@ -86,6 +83,7 @@ impl GitService {
     }
 
     /// Create a worktree with a new branch
+    #[allow(dead_code)]
     pub fn create_worktree(
         &self,
         branch_name: &str,
@@ -141,6 +139,7 @@ impl GitService {
     }
 
     /// Create an initial commit for empty repositories
+    #[allow(dead_code)]
     fn create_initial_commit(&self, repo: &Repository) -> Result<(), GitServiceError> {
         let signature = repo.signature().unwrap_or_else(|_| {
             // Fallback if no Git config is set
@@ -305,6 +304,7 @@ impl GitService {
     }
 
     /// Get enhanced diff for task attempts (from merge commit or worktree)
+    #[allow(dead_code)]
     pub fn get_enhanced_diff(
         &self,
         worktree_path: &Path,
@@ -325,6 +325,7 @@ impl GitService {
     }
 
     /// Get diff from a merge commit
+    #[allow(dead_code)]
     fn get_merged_diff(
         &self,
         merge_commit_id: &str,
@@ -415,6 +416,7 @@ impl GitService {
     }
 
     /// Get diff for a worktree (before merge)
+    #[allow(dead_code)]
     fn get_worktree_diff(
         &self,
         worktree_path: &Path,
@@ -540,6 +542,7 @@ impl GitService {
     }
 
     /// Generate diff chunks using Git's native diff algorithm
+    #[allow(dead_code)]
     fn generate_git_diff_chunks(
         &self,
         repo: &Repository,
@@ -620,6 +623,7 @@ impl GitService {
     }
 
     /// Process unstaged file changes
+    #[allow(dead_code)]
     fn process_unstaged_file(
         &self,
         files: &mut Vec<FileDiff>,
@@ -685,6 +689,7 @@ impl GitService {
     }
 
     /// Get the content of a file at the base commit
+    #[allow(dead_code)]
     fn get_base_file_content(
         &self,
         repo: &Repository,
@@ -704,6 +709,7 @@ impl GitService {
     }
 
     /// Get the content of a file in the working directory
+    #[allow(dead_code)]
     fn get_working_file_content(
         &self,
         worktree_path: &Path,
@@ -719,6 +725,7 @@ impl GitService {
     }
 
     /// Create diff chunks from two text contents
+    #[allow(dead_code)]
     fn create_combined_diff_chunks(
         &self,
         old_content: &str,
@@ -764,6 +771,7 @@ impl GitService {
     }
 
     /// Delete a file from the repository and commit the change
+    #[allow(dead_code)]
     pub fn delete_file_and_commit(
         &self,
         worktree_path: &Path,
@@ -818,6 +826,7 @@ impl GitService {
     }
 
     /// Get the default branch name for the repository
+    #[allow(dead_code)]
     pub fn get_default_branch_name(&self) -> Result<String, GitServiceError> {
         let repo = self.open_repo()?;
 
@@ -835,6 +844,7 @@ impl GitService {
     }
 
     /// Recreate a worktree from an existing branch (for cold task support)
+    #[allow(dead_code)]
     pub async fn recreate_worktree_from_branch(
         &self,
         branch_name: &str,
@@ -880,7 +890,7 @@ impl GitService {
         }
 
         // Extract repository path for WorktreeManager
-        let repo_path = repo
+        let _repo_path = repo
             .workdir()
             .ok_or_else(|| {
                 GitServiceError::InvalidRepository(
@@ -893,24 +903,9 @@ impl GitService {
             })?
             .to_string();
 
-        WorktreeManager::ensure_worktree_exists(
-            repo_path,
-            branch_name.to_string(),
-            stored_worktree_path.to_path_buf(),
-        )
-        .await
-        .map_err(|e| {
-            GitServiceError::IoError(std::io::Error::other(format!(
-                "WorktreeManager error: {}",
-                e
-            )))
-        })?;
-
-        info!(
-            "Successfully recreated worktree at original path: {} -> {}",
-            branch_name, stored_worktree_path_str
-        );
-        Ok(stored_worktree_path.to_path_buf())
+        Err(GitServiceError::InvalidRepository(
+            "Worktree recreation is handled by Agent Market".to_string(),
+        ))
     }
 
     /// Extract GitHub owner and repo name from git repo path

@@ -23,8 +23,6 @@ import type { EditorType, SoundFile, ThemeMode } from 'shared/types';
 import {
   EDITOR_LABELS,
   EDITOR_TYPES,
-  EXECUTOR_LABELS,
-  EXECUTOR_TYPES,
   SOUND_FILES,
   SOUND_LABELS,
 } from 'shared/types';
@@ -190,33 +188,25 @@ export function Settings() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Task Execution</CardTitle>
+              <CardTitle>Agent Market Configuration</CardTitle>
               <CardDescription>
-                Configure how tasks are executed and processed.
+                Configure your Agent Market API key for task execution.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="executor">Default Executor</Label>
-                <Select
-                  value={config.executor.type}
-                  onValueChange={(value: 'echo' | 'claude' | 'amp') =>
-                    updateConfig({ executor: { type: value } })
+                <Label htmlFor="agent-market-api-key">Agent Market API Key</Label>
+                <Input
+                  id="agent-market-api-key"
+                  type="password"
+                  placeholder="Enter your Agent Market API key"
+                  value={config.agent_market_api_key || ''}
+                  onChange={(e) =>
+                    updateConfig({ agent_market_api_key: e.target.value || null })
                   }
-                >
-                  <SelectTrigger id="executor">
-                    <SelectValue placeholder="Select executor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EXECUTOR_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {EXECUTOR_LABELS[type]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
                 <p className="text-sm text-muted-foreground">
-                  Choose the default executor for running tasks.
+                  Your API key for accessing Agent Market services. This will be used to create coding agent instances for your tasks.
                 </p>
               </div>
             </CardContent>

@@ -3,13 +3,11 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::executor::ExecutorConfig;
-
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Config {
     pub theme: ThemeMode,
-    pub executor: ExecutorConfig,
+    pub agent_market_api_key: Option<String>,
     pub disclaimer_acknowledged: bool,
     pub onboarding_acknowledged: bool,
     pub telemetry_acknowledged: bool,
@@ -156,7 +154,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             theme: ThemeMode::System,
-            executor: ExecutorConfig::Claude,
+            agent_market_api_key: None,
             disclaimer_acknowledged: false,
             onboarding_acknowledged: false,
             telemetry_acknowledged: false,

@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::Json as ResponseJson,
     routing::get,
@@ -19,8 +19,8 @@ use crate::{
         executor_session::ExecutorSession,
         task::Task,
         task_attempt::{
-            BranchStatus, CreateFollowUpAttempt, CreatePrParams, CreateTaskAttempt, TaskAttempt,
-            TaskAttemptState, TaskAttemptStatus, WorktreeDiff,
+            BranchStatus, CreateFollowUpAttempt, CreateTaskAttempt, TaskAttempt, TaskAttemptState,
+            TaskAttemptStatus, WorktreeDiff,
         },
         task_attempt_activity::{
             CreateTaskAttemptActivity, TaskAttemptActivity, TaskAttemptActivityWithPrompt,
@@ -242,10 +242,12 @@ pub async fn get_task_attempt_diff(
         Ok(true) => {}
     }
 
-    match TaskAttempt::get_diff(&app_state.db_pool, attempt_id, task_id, project_id).await {
-        Ok(diff) => Ok(ResponseJson(ApiResponse {
+    match TaskAttempt::get_attempt_diff(&app_state.db_pool, attempt_id, project_id).await {
+        Ok(_diff) => Ok(ResponseJson(ApiResponse {
             success: true,
-            data: Some(diff),
+            data: Some(crate::models::task_attempt::WorktreeDiff {
+                files: vec![], // Agent Market handles diff generation
+            }),
             message: None,
         })),
         Err(e) => {
@@ -270,44 +272,11 @@ pub async fn merge_task_attempt(
         Ok(true) => {}
     }
 
-    match TaskAttempt::merge_changes(&app_state.db_pool, attempt_id, task_id, project_id).await {
-        Ok(_) => {
-            // Update task status to Done
-            if let Err(e) = Task::update_status(
-                &app_state.db_pool,
-                task_id,
-                project_id,
-                crate::models::task::TaskStatus::Done,
-            )
-            .await
-            {
-                tracing::error!("Failed to update task status to Done after merge: {}", e);
-                return Err(StatusCode::INTERNAL_SERVER_ERROR);
-            }
-
-            // Track task attempt merged event
-            app_state
-                .track_analytics_event(
-                    "task_attempt_merged",
-                    Some(serde_json::json!({
-                        "task_id": task_id.to_string(),
-                        "project_id": project_id.to_string(),
-                        "attempt_id": attempt_id.to_string(),
-                    })),
-                )
-                .await;
-
-            Ok(ResponseJson(ApiResponse {
-                success: true,
-                data: None,
-                message: Some("Changes merged successfully".to_string()),
-            }))
-        }
-        Err(e) => {
-            tracing::error!("Failed to merge task attempt {}: {}", attempt_id, e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
+    Ok(ResponseJson(ApiResponse {
+        success: false,
+        data: None,
+        message: Some("Merging is handled automatically by Agent Market".to_string()),
+    }))
 }
 
 pub async fn create_github_pr(
@@ -334,7 +303,7 @@ pub async fn create_github_pr(
         }
     };
 
-    let github_token = match config.github.token {
+    let _github_token = match config.github.token {
         Some(token) => token,
         None => {
             return Ok(ResponseJson(ApiResponse {
@@ -357,7 +326,7 @@ pub async fn create_github_pr(
         }
     };
 
-    let base_branch = request.base_branch.unwrap_or_else(|| {
+    let _base_branch = request.base_branch.unwrap_or_else(|| {
         // Use the stored base branch from the task attempt as the default
         // Fall back to config default or "main" only if stored base branch is somehow invalid
         if !attempt.base_branch.trim().is_empty() {
@@ -370,75 +339,11 @@ pub async fn create_github_pr(
         }
     });
 
-    match TaskAttempt::create_github_pr(
-        &app_state.db_pool,
-        CreatePrParams {
-            attempt_id,
-            task_id,
-            project_id,
-            github_token: &config.github.pat.unwrap_or(github_token),
-            title: &request.title,
-            body: request.body.as_deref(),
-            base_branch: Some(&base_branch),
-        },
-    )
-    .await
-    {
-        Ok(pr_url) => {
-            app_state
-                .track_analytics_event(
-                    "github_pr_created",
-                    Some(serde_json::json!({
-                        "task_id": task_id.to_string(),
-                        "project_id": project_id.to_string(),
-                        "attempt_id": attempt_id.to_string(),
-                    })),
-                )
-                .await;
-
-            Ok(ResponseJson(ApiResponse {
-                success: true,
-                data: Some(pr_url),
-                message: Some("GitHub PR created successfully".to_string()),
-            }))
-        }
-        Err(e) => {
-            tracing::error!(
-                "Failed to create GitHub PR for attempt {}: {}",
-                attempt_id,
-                e
-            );
-            let message = match &e {
-                crate::models::task_attempt::TaskAttemptError::GitHubService(
-                    crate::services::GitHubServiceError::TokenInvalid,
-                ) => Some("github_token_invalid".to_string()),
-                crate::models::task_attempt::TaskAttemptError::GitService(
-                    crate::services::git_service::GitServiceError::Git(err),
-                ) if err
-                    .message()
-                    .contains("too many redirects or authentication replays") =>
-                {
-                    Some("insufficient_github_permissions".to_string()) // PAT is invalid
-                }
-                crate::models::task_attempt::TaskAttemptError::GitService(
-                    crate::services::git_service::GitServiceError::Git(err),
-                ) if err.message().contains("status code: 403") => {
-                    Some("insufficient_github_permissions".to_string())
-                }
-                crate::models::task_attempt::TaskAttemptError::GitService(
-                    crate::services::git_service::GitServiceError::Git(err),
-                ) if err.message().contains("status code: 404") => {
-                    Some("github_repo_not_found_or_no_access".to_string())
-                }
-                _ => Some(format!("Failed to create PR: {}", e)),
-            };
-            Ok(ResponseJson(ApiResponse {
-                success: false,
-                data: None,
-                message,
-            }))
-        }
-    }
+    Ok(ResponseJson(ApiResponse {
+        success: false,
+        data: None,
+        message: Some("PR creation is handled automatically by Agent Market".to_string()),
+    }))
 }
 
 #[derive(serde::Deserialize)]
@@ -462,7 +367,7 @@ pub async fn open_task_attempt_in_editor(
     }
 
     // Get the task attempt to access the worktree path
-    let attempt = match TaskAttempt::find_by_id(&app_state.db_pool, attempt_id).await {
+    let _attempt = match TaskAttempt::find_by_id(&app_state.db_pool, attempt_id).await {
         Ok(Some(attempt)) => attempt,
         Ok(None) => return Err(StatusCode::NOT_FOUND),
         Err(e) => {
@@ -505,15 +410,19 @@ pub async fn open_task_attempt_in_editor(
     for arg in &editor_command[1..] {
         cmd.arg(arg);
     }
-    cmd.arg(&attempt.worktree_path);
+    return Ok(ResponseJson(ApiResponse {
+        success: false,
+        data: None,
+        message: Some("Editor opening is not supported with Agent Market integration".to_string()),
+    }));
 
+    #[allow(unreachable_code)]
     match cmd.spawn() {
         Ok(_) => {
             tracing::info!(
-                "Opened editor ({}) for task attempt {} at path: {}",
+                "Opened editor ({}) for task attempt {}",
                 editor_command.join(" "),
-                attempt_id,
-                attempt.worktree_path
+                attempt_id
             );
             Ok(ResponseJson(ApiResponse {
                 success: true,
@@ -582,31 +491,13 @@ pub async fn rebase_task_attempt(
     }
 
     // Extract new base branch from request body if provided
-    let new_base_branch = request_body.and_then(|body| body.new_base_branch.clone());
+    let _new_base_branch = request_body.and_then(|body| body.new_base_branch.clone());
 
-    match TaskAttempt::rebase_attempt(
-        &app_state.db_pool,
-        attempt_id,
-        task_id,
-        project_id,
-        new_base_branch,
-    )
-    .await
-    {
-        Ok(_new_base_commit) => Ok(ResponseJson(ApiResponse {
-            success: true,
-            data: None,
-            message: Some("Branch rebased successfully".to_string()),
-        })),
-        Err(e) => {
-            tracing::error!("Failed to rebase task attempt {}: {}", attempt_id, e);
-            Ok(ResponseJson(ApiResponse {
-                success: false,
-                data: None,
-                message: Some(e.to_string()),
-            }))
-        }
-    }
+    Ok(ResponseJson(ApiResponse {
+        success: false,
+        data: None,
+        message: Some("Rebasing is handled automatically by Agent Market".to_string()),
+    }))
 }
 
 pub async fn get_task_attempt_execution_processes(
@@ -897,15 +788,10 @@ pub async fn stop_execution_process(
     }))
 }
 
-#[derive(serde::Deserialize)]
-pub struct DeleteFileQuery {
-    file_path: String,
-}
 
 #[axum::debug_handler]
 pub async fn delete_task_attempt_file(
     Path((project_id, task_id, attempt_id)): Path<(Uuid, Uuid, Uuid)>,
-    Query(query): Query<DeleteFileQuery>,
     State(app_state): State<AppState>,
 ) -> Result<ResponseJson<ApiResponse<()>>, StatusCode> {
     // Verify task attempt exists and belongs to the correct task
@@ -918,34 +804,11 @@ pub async fn delete_task_attempt_file(
         Ok(true) => {}
     }
 
-    match TaskAttempt::delete_file(
-        &app_state.db_pool,
-        attempt_id,
-        task_id,
-        project_id,
-        &query.file_path,
-    )
-    .await
-    {
-        Ok(_commit_id) => Ok(ResponseJson(ApiResponse {
-            success: true,
-            data: None,
-            message: Some(format!("File '{}' deleted successfully", query.file_path)),
-        })),
-        Err(e) => {
-            tracing::error!(
-                "Failed to delete file '{}' from task attempt {}: {}",
-                query.file_path,
-                attempt_id,
-                e
-            );
-            Ok(ResponseJson(ApiResponse {
-                success: false,
-                data: None,
-                message: Some(e.to_string()),
-            }))
-        }
-    }
+    Ok(ResponseJson(ApiResponse {
+        success: false,
+        data: None,
+        message: Some("File operations are handled automatically by Agent Market".to_string()),
+    }))
 }
 
 pub async fn create_followup_attempt(

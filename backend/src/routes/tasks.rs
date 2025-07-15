@@ -9,13 +9,13 @@ use uuid::Uuid;
 
 use crate::{
     app_state::AppState,
-    execution_monitor,
     models::{
         project::Project,
         task::{CreateTask, CreateTaskAndStart, Task, TaskWithAttemptStatus, UpdateTask},
         task_attempt::{CreateTaskAttempt, TaskAttempt},
         ApiResponse,
     },
+    services::AgentMarketClient,
 };
 
 pub async fn get_project_tasks(
@@ -142,6 +142,7 @@ pub async fn create_task_and_start(
         project_id: payload.project_id,
         title: payload.title.clone(),
         description: payload.description.clone(),
+        max_reward: payload.max_reward,
     };
     let task = match Task::create(&app_state.db_pool, &create_task_payload, task_id).await {
         Ok(task) => task,
@@ -151,10 +152,9 @@ pub async fn create_task_and_start(
         }
     };
 
-    // Create task attempt
-    let executor_string = payload.executor.as_ref().map(|exec| exec.to_string());
+    // Create task attempt - using default executor since Agent Market will handle execution
     let attempt_payload = CreateTaskAttempt {
-        executor: executor_string.clone(),
+        executor: Some("agent_market".to_string()),
         base_branch: None, // Not supported in task creation endpoint, only in task attempts
     };
 
@@ -176,30 +176,60 @@ pub async fn create_task_and_start(
                     "task_attempt_started",
                     Some(serde_json::json!({
                         "task_id": task.id.to_string(),
-                        "executor_type": executor_string.as_deref().unwrap_or("default"),
+                        "executor_type": "agent_market",
                         "attempt_id": attempt.id.to_string(),
                     })),
                 )
                 .await;
 
-            // Start execution asynchronously (don't block the response)
+            // Start Agent Market instance asynchronously (don't block the response)
             let app_state_clone = app_state.clone();
-            let attempt_id = attempt.id;
+            let _attempt_id = attempt.id;
+            let task_clone = task.clone();
+            let max_reward = payload.max_reward;
             tokio::spawn(async move {
-                if let Err(e) = TaskAttempt::start_execution(
-                    &app_state_clone.db_pool,
-                    &app_state_clone,
-                    attempt_id,
-                    task_id,
-                    project_id,
-                )
-                .await
-                {
-                    tracing::error!(
-                        "Failed to start execution for task attempt {}: {}",
-                        attempt_id,
-                        e
-                    );
+                let config = app_state_clone.get_config().read().await;
+                if let Some(api_key) = config.agent_market_api_key.clone() {
+                    drop(config); // Release the lock early
+                    match Project::find_by_id(&app_state_clone.db_pool, project_id).await {
+                        Ok(Some(project)) => {
+                            let agent_market_client = AgentMarketClient::new();
+                            match agent_market_client
+                                .create_instance(&api_key, &task_clone, &project, max_reward)
+                                .await
+                            {
+                                Ok(instance_response) => {
+                                    tracing::info!(
+                                        "Successfully created Agent Market instance for task {}: {:?}",
+                                        task_id,
+                                        instance_response
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Failed to create Agent Market instance for task {}: {}",
+                                        task_id,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            tracing::error!(
+                                "Project {} not found for Agent Market instance",
+                                project_id
+                            );
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to fetch project {} for Agent Market instance: {}",
+                                project_id,
+                                e
+                            );
+                        }
+                    }
+                } else {
+                    tracing::error!("Agent Market API key not configured");
                 }
             });
 
@@ -271,12 +301,6 @@ pub async fn delete_task(
             tracing::error!("Failed to check task existence: {}", e);
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
-    }
-
-    // Clean up all worktrees for this task before deletion
-    if let Err(e) = execution_monitor::cleanup_task_worktrees(&app_state.db_pool, task_id).await {
-        tracing::error!("Failed to cleanup worktrees for task {}: {}", task_id, e);
-        // Continue with deletion even if cleanup fails
     }
 
     // Clean up all executor sessions for this task before deletion

@@ -18,7 +18,6 @@ import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
 import { TaskDetailsPanel } from '@/components/tasks/TaskDetailsPanel';
 import type {
   CreateTaskAndStart,
-  ExecutorConfig,
   ProjectWithBranch,
   TaskStatus,
   TaskWithAttemptStatus,
@@ -150,12 +149,13 @@ export function ProjectTasks() {
   );
 
   const handleCreateTask = useCallback(
-    async (title: string, description: string) => {
+    async (title: string, description: string, maxReward: number) => {
       try {
         const createdTask = await tasksApi.create(projectId!, {
           project_id: projectId!,
           title,
           description: description || null,
+          max_reward: maxReward,
         });
         await fetchTasks();
         // Open the newly created task in the details panel
@@ -170,13 +170,13 @@ export function ProjectTasks() {
   );
 
   const handleCreateAndStartTask = useCallback(
-    async (title: string, description: string, executor?: ExecutorConfig) => {
+    async (title: string, description: string, maxReward: number) => {
       try {
         const payload: CreateTaskAndStart = {
           project_id: projectId!,
           title,
           description: description || null,
-          executor: executor || null,
+          max_reward: maxReward,
         };
         const result = await tasksApi.createAndStart(projectId!, payload);
         await fetchTasks();

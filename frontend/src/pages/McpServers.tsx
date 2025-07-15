@@ -32,12 +32,12 @@ export function McpServers() {
   const [mcpConfigPath, setMcpConfigPath] = useState<string>('');
   const [success, setSuccess] = useState(false);
 
-  // Initialize selected MCP executor when config loads
+  // Initialize selected MCP executor when config loads - removed since executor no longer exists in config
   useEffect(() => {
-    if (config?.executor?.type && !selectedMcpExecutor) {
-      setSelectedMcpExecutor(config.executor.type);
+    if (!selectedMcpExecutor) {
+      setSelectedMcpExecutor('claude'); // Default to claude
     }
-  }, [config?.executor?.type, selectedMcpExecutor]);
+  }, [selectedMcpExecutor]);
 
   // Load existing MCP configuration when selected executor changes
   useEffect(() => {

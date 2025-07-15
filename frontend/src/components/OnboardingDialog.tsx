@@ -19,30 +19,28 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Sparkles, Code } from 'lucide-react';
-import type { EditorType, ExecutorConfig } from 'shared/types';
+import type { EditorType } from 'shared/types';
 import {
-  EXECUTOR_TYPES,
   EDITOR_TYPES,
-  EXECUTOR_LABELS,
   EDITOR_LABELS,
 } from 'shared/types';
 
 interface OnboardingDialogProps {
   open: boolean;
   onComplete: (config: {
-    executor: ExecutorConfig;
+    agent_market_api_key: string;
     editor: { editor_type: EditorType; custom_command: string | null };
   }) => void;
 }
 
 export function OnboardingDialog({ open, onComplete }: OnboardingDialogProps) {
-  const [executor, setExecutor] = useState<ExecutorConfig>({ type: 'claude' });
+  const [agentMarketApiKey, setAgentMarketApiKey] = useState<string>('');
   const [editorType, setEditorType] = useState<EditorType>('vscode');
   const [customCommand, setCustomCommand] = useState<string>('');
 
   const handleComplete = () => {
     onComplete({
-      executor,
+      agent_market_api_key: agentMarketApiKey,
       editor: {
         editor_type: editorType,
         custom_command: editorType === 'custom' ? customCommand || null : null,
@@ -51,8 +49,9 @@ export function OnboardingDialog({ open, onComplete }: OnboardingDialogProps) {
   };
 
   const isValid =
-    editorType !== 'custom' ||
-    (editorType === 'custom' && customCommand.trim() !== '');
+    agentMarketApiKey.trim() !== '' &&
+    (editorType !== 'custom' ||
+    (editorType === 'custom' && customCommand.trim() !== ''));
 
   return (
     <Dialog open={open} onOpenChange={() => {}}>
@@ -73,35 +72,21 @@ export function OnboardingDialog({ open, onComplete }: OnboardingDialogProps) {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4" />
-                Choose Your Coding Agent
+                Agent Market Configuration
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="executor">Default Executor</Label>
-                <Select
-                  value={executor.type}
-                  onValueChange={(value: 'echo' | 'claude' | 'amp') =>
-                    setExecutor({ type: value })
-                  }
-                >
-                  <SelectTrigger id="executor">
-                    <SelectValue placeholder="Select your preferred coding agent" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EXECUTOR_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {EXECUTOR_LABELS[type]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="agent-market-api-key">Agent Market API Key</Label>
+                <Input
+                  id="agent-market-api-key"
+                  type="password"
+                  value={agentMarketApiKey}
+                  onChange={(e) => setAgentMarketApiKey(e.target.value)}
+                  placeholder="Enter your Agent Market API key"
+                />
                 <p className="text-sm text-muted-foreground">
-                  {executor.type === 'claude' && 'Claude Code from Anthropic'}
-                  {executor.type === 'amp' && 'From Sourcegraph'}
-                  {executor.type === 'gemini' && 'Google Gemini from Bloop'}
-                  {executor.type === 'echo' &&
-                    'This is just for debugging vibe-kanban itself'}
+                  Your API key for accessing Agent Market services. This will be used to create coding agent instances for your tasks.
                 </p>
               </div>
             </CardContent>

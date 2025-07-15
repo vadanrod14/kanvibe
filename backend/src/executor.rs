@@ -327,8 +327,11 @@ pub trait Executor: Send + Sync {
 #[derive(Debug, Clone)]
 pub enum ExecutorType {
     SetupScript(String),
+    #[allow(dead_code)]
     DevServer(String),
+    #[allow(dead_code)]
     CodingAgent(ExecutorConfig),
+    #[allow(dead_code)]
     FollowUpCodingAgent {
         config: ExecutorConfig,
         session_id: Option<String>,
@@ -392,6 +395,7 @@ impl ExecutorConfig {
         }
     }
 
+    #[allow(dead_code)]
     pub fn config_path(&self) -> Option<std::path::PathBuf> {
         match self {
             ExecutorConfig::Echo => None,
@@ -408,6 +412,7 @@ impl ExecutorConfig {
     }
 
     /// Get the JSON attribute path for MCP servers in the config file
+    #[allow(dead_code)]
     pub fn mcp_attribute_path(&self) -> Option<Vec<&'static str>> {
         match self {
             ExecutorConfig::Echo => None, // Echo doesn't support MCP
@@ -420,6 +425,7 @@ impl ExecutorConfig {
     }
 
     /// Check if this executor supports MCP configuration
+    #[allow(dead_code)]
     pub fn supports_mcp(&self) -> bool {
         !matches!(
             self,
@@ -428,6 +434,7 @@ impl ExecutorConfig {
     }
 
     /// Get the display name for this executor
+    #[allow(dead_code)]
     pub fn display_name(&self) -> &'static str {
         match self {
             ExecutorConfig::Echo => "Echo (Test Mode)",

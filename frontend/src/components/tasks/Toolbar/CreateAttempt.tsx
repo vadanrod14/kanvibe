@@ -22,7 +22,6 @@ import {
   TaskAttemptDataContext,
   TaskDetailsContext,
 } from '@/components/context/taskDetailsContext.ts';
-import { useConfig } from '@/components/config-provider.tsx';
 
 type Props = {
   branches: GitBranch[];
@@ -56,7 +55,6 @@ function CreateAttempt({
 }: Props) {
   const { task, projectId } = useContext(TaskDetailsContext);
   const { isAttemptRunning } = useContext(TaskAttemptDataContext);
-  const { config } = useConfig();
 
   const [branchSearchTerm, setBranchSearchTerm] = useState('');
 
@@ -234,7 +232,6 @@ function CreateAttempt({
                     }
                   >
                     {executor.name}
-                    {config?.executor.type === executor.id && ' (Default)'}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>

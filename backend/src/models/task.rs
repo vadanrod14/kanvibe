@@ -49,6 +49,8 @@ pub struct CreateTask {
     pub project_id: Uuid,
     pub title: String,
     pub description: Option<String>,
+    #[allow(dead_code)]
+    pub max_reward: i32,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -57,7 +59,8 @@ pub struct CreateTaskAndStart {
     pub project_id: Uuid,
     pub title: String,
     pub description: Option<String>,
-    pub executor: Option<crate::executor::ExecutorConfig>,
+    #[allow(dead_code)]
+    pub max_reward: i32,
 }
 
 #[derive(Debug, Deserialize, TS)]

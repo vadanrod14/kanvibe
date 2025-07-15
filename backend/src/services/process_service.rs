@@ -1,5 +1,5 @@
 use sqlx::SqlitePool;
-use tracing::{debug, info};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::{
@@ -84,18 +84,18 @@ impl ProcessService {
     /// Execute setup script with delegation context for continuing after completion
     async fn execute_setup_with_delegation(
         pool: &SqlitePool,
-        app_state: &crate::app_state::AppState,
+        _app_state: &crate::app_state::AppState,
         attempt_id: Uuid,
         task_id: Uuid,
         project_id: Uuid,
         delegate_to: &str,
         operation_params: Option<serde_json::Value>,
     ) -> Result<(), TaskAttemptError> {
-        let (task_attempt, project) =
+        let (_task_attempt, project) =
             Self::load_execution_context(pool, attempt_id, project_id).await?;
 
         // Create delegation context for execution monitor
-        let delegation_context = serde_json::json!({
+        let _delegation_context = serde_json::json!({
             "delegate_to": delegate_to,
             "operation_params": {
                 "task_id": task_id,
@@ -106,68 +106,18 @@ impl ProcessService {
         });
 
         // Create modified setup script execution with delegation context in args
-        let setup_script = project.setup_script.as_ref().unwrap();
-        let process_id = Uuid::new_v4();
+        let _setup_script = project.setup_script.as_ref().unwrap();
+        let _process_id = Uuid::new_v4();
 
-        // Create execution process record with delegation context
-        let _execution_process = Self::create_execution_process_record_with_delegation(
-            pool,
-            attempt_id,
-            process_id,
-            setup_script,
-            &task_attempt.worktree_path,
-            delegation_context,
-        )
-        .await?;
-
-        // Create activity record
-        Self::create_activity_record(
-            pool,
-            process_id,
-            TaskAttemptStatus::SetupRunning,
-            "Starting setup script with delegation",
-        )
-        .await?;
-
-        tracing::info!(
-            "Starting setup script with delegation to {} for task attempt {}",
-            delegate_to,
-            attempt_id
-        );
-
-        // Execute the setup script
-        let child = Self::execute_setup_script_process(
-            setup_script,
-            pool,
-            task_id,
-            attempt_id,
-            process_id,
-            &task_attempt.worktree_path,
-        )
-        .await?;
-
-        // Register for monitoring
-        Self::register_for_monitoring(
-            app_state,
-            process_id,
-            attempt_id,
-            &ExecutionProcessType::SetupScript,
-            child,
-        )
-        .await;
-
-        tracing::info!(
-            "Started setup execution with delegation {} for task attempt {}",
-            process_id,
-            attempt_id
-        );
-        Ok(())
+        Err(TaskAttemptError::ValidationError(
+            "Setup script execution is handled by Agent Market".to_string(),
+        ))
     }
 
     /// Start the execution flow for a task attempt (setup script + executor)
     pub async fn start_execution(
         pool: &SqlitePool,
-        app_state: &crate::app_state::AppState,
+        _app_state: &crate::app_state::AppState,
         attempt_id: Uuid,
         task_id: Uuid,
         project_id: Uuid,
@@ -175,54 +125,36 @@ impl ProcessService {
         use crate::models::task::{Task, TaskStatus};
 
         // Load required entities
-        let (task_attempt, project) =
+        let (_task_attempt, _project) =
             Self::load_execution_context(pool, attempt_id, project_id).await?;
 
         // Update task status to indicate execution has started
         Task::update_status(pool, task_id, project_id, TaskStatus::InProgress).await?;
 
-        // Determine execution sequence based on project configuration
-        if Self::should_run_setup_script(&project) {
-            Self::start_setup_script(
-                pool,
-                app_state,
-                attempt_id,
-                task_id,
-                &project,
-                &task_attempt.worktree_path,
-            )
-            .await
-        } else {
-            Self::start_coding_agent(pool, app_state, attempt_id, task_id, project_id).await
-        }
+        // Agent Market handles all execution
+        Err(TaskAttemptError::ValidationError(
+            "Task execution is handled by Agent Market".to_string(),
+        ))
     }
 
     /// Start the coding agent after setup is complete or if no setup is needed
     pub async fn start_coding_agent(
         pool: &SqlitePool,
-        app_state: &crate::app_state::AppState,
+        _app_state: &crate::app_state::AppState,
         attempt_id: Uuid,
-        task_id: Uuid,
+        _task_id: Uuid,
         _project_id: Uuid,
     ) -> Result<(), TaskAttemptError> {
         let task_attempt = TaskAttempt::find_by_id(pool, attempt_id)
             .await?
             .ok_or(TaskAttemptError::TaskNotFound)?;
 
-        let executor_config = Self::resolve_executor_config(&task_attempt.executor);
+        let _executor_config = Self::resolve_executor_config(&task_attempt.executor);
 
-        Self::start_process_execution(
-            pool,
-            app_state,
-            attempt_id,
-            task_id,
-            crate::executor::ExecutorType::CodingAgent(executor_config),
-            "Starting executor".to_string(),
-            TaskAttemptStatus::ExecutorRunning,
-            ExecutionProcessType::CodingAgent,
-            &task_attempt.worktree_path,
-        )
-        .await
+        // Agent Market handles coding agent execution
+        Err(TaskAttemptError::ValidationError(
+            "Coding agent execution is handled by Agent Market".to_string(),
+        ))
     }
 
     /// Start a dev server for this task attempt (with automatic setup)
@@ -233,10 +165,6 @@ impl ProcessService {
         task_id: Uuid,
         project_id: Uuid,
     ) -> Result<(), TaskAttemptError> {
-        // Ensure worktree exists (recreate if needed for cold task support)
-        let _worktree_path =
-            TaskAttempt::ensure_worktree_exists(pool, attempt_id, project_id, "dev server").await?;
-
         // Use automatic setup logic
         Self::auto_setup_and_execute(
             pool,
@@ -253,14 +181,12 @@ impl ProcessService {
     /// Start a dev server directly without setup check (internal method)
     pub async fn start_dev_server_direct(
         pool: &SqlitePool,
-        app_state: &crate::app_state::AppState,
-        attempt_id: Uuid,
-        task_id: Uuid,
+        _app_state: &crate::app_state::AppState,
+        _attempt_id: Uuid,
+        _task_id: Uuid,
         project_id: Uuid,
     ) -> Result<(), TaskAttemptError> {
-        // Ensure worktree exists (recreate if needed for cold task support)
-        let worktree_path =
-            TaskAttempt::ensure_worktree_exists(pool, attempt_id, project_id, "dev server").await?;
+        // Agent Market handles worktree management
 
         // Get the project to access the dev_script
         let project = Project::find_by_id(pool, project_id)
@@ -279,33 +205,10 @@ impl ProcessService {
             ));
         }
 
-        let result = Self::start_process_execution(
-            pool,
-            app_state,
-            attempt_id,
-            task_id,
-            crate::executor::ExecutorType::DevServer(dev_script),
-            "Starting dev server".to_string(),
-            TaskAttemptStatus::ExecutorRunning, // Dev servers don't create activities, just use generic status
-            ExecutionProcessType::DevServer,
-            &worktree_path,
-        )
-        .await;
-
-        if result.is_ok() {
-            app_state
-                .track_analytics_event(
-                    "dev_server_started",
-                    Some(serde_json::json!({
-                        "task_id": task_id.to_string(),
-                        "project_id": project_id.to_string(),
-                        "attempt_id": attempt_id.to_string()
-                    })),
-                )
-                .await;
-        }
-
-        result
+        // Agent Market handles dev server execution
+        Err(TaskAttemptError::ValidationError(
+            "Dev server execution is handled by Agent Market".to_string(),
+        ))
     }
 
     /// Start a follow-up execution using the same executor type as the first process (with automatic setup)
@@ -327,26 +230,15 @@ impl ProcessService {
 
         let actual_attempt_id = attempt_id;
 
-        if current_attempt.worktree_deleted {
-            info!(
-                "Resurrecting deleted attempt {} (branch: {}) for followup execution - maintaining session continuity",
-                attempt_id, current_attempt.branch
-            );
-        } else {
-            info!(
-                "Continuing followup execution on active attempt {} (branch: {})",
-                attempt_id, current_attempt.branch
-            );
-        }
+        info!(
+            "Followup execution for attempt {} (branch: {}) - handled by Agent Market",
+            attempt_id, current_attempt.branch
+        );
 
         // Update task status to indicate follow-up execution has started
         Task::update_status(pool, task_id, project_id, TaskStatus::InProgress).await?;
 
-        // Ensure worktree exists (recreate if needed for cold task support)
-        // This will resurrect the worktree at the exact same path for session continuity
-        let _worktree_path =
-            TaskAttempt::ensure_worktree_exists(pool, actual_attempt_id, project_id, "followup")
-                .await?;
+        // Agent Market handles worktree management
 
         // Use automatic setup logic with followup parameters
         let operation_params = serde_json::json!({
@@ -370,16 +262,13 @@ impl ProcessService {
     /// Start a follow-up execution directly without setup check (internal method)
     pub async fn start_followup_execution_direct(
         pool: &SqlitePool,
-        app_state: &crate::app_state::AppState,
+        _app_state: &crate::app_state::AppState,
         attempt_id: Uuid,
-        task_id: Uuid,
-        project_id: Uuid,
-        prompt: &str,
+        _task_id: Uuid,
+        _project_id: Uuid,
+        _prompt: &str,
     ) -> Result<Uuid, TaskAttemptError> {
-        // Ensure worktree exists (recreate if needed for cold task support)
-        // This will resurrect the worktree at the exact same path for session continuity
-        let worktree_path =
-            TaskAttempt::ensure_worktree_exists(pool, attempt_id, project_id, "followup").await?;
+        // Agent Market handles worktree management
 
         // Find the most recent coding agent execution process to get the executor type
         // Look up processes from the ORIGINAL attempt to find the session
@@ -401,7 +290,7 @@ impl ProcessService {
 
         // Get the executor session to find the session ID
         // This looks up the session from the original attempt's processes
-        let executor_session =
+        let _executor_session =
             ExecutorSession::find_by_execution_process_id(pool, most_recent_coding_agent.id)
                 .await?
                 .ok_or_else(|| {
@@ -416,7 +305,7 @@ impl ProcessService {
                 })?;
 
         // Determine the executor config from the stored executor_type
-        let executor_config = match most_recent_coding_agent.executor_type.as_deref() {
+        let _executor_config = match most_recent_coding_agent.executor_type.as_deref() {
             Some("claude") => crate::executor::ExecutorConfig::Claude,
             Some("amp") => crate::executor::ExecutorConfig::Amp,
             Some("gemini") => crate::executor::ExecutorConfig::Gemini,
@@ -439,72 +328,10 @@ impl ProcessService {
             }
         };
 
-        // Try to use follow-up with session ID, but fall back to new session if it fails
-        let followup_executor = if let Some(session_id) = &executor_session.session_id {
-            // First try with session ID for continuation
-            debug!(
-                "SESSION_FOLLOWUP: Attempting follow-up execution with session ID: {} (attempt: {}, worktree: {})",
-                session_id, attempt_id, worktree_path
-            );
-            crate::executor::ExecutorType::FollowUpCodingAgent {
-                config: executor_config.clone(),
-                session_id: executor_session.session_id.clone(),
-                prompt: prompt.to_string(),
-            }
-        } else {
-            // No session ID available, start new session
-            tracing::warn!(
-                "SESSION_FOLLOWUP: No session ID available for follow-up execution on attempt {}, starting new session (worktree: {})",
-                attempt_id, worktree_path
-            );
-            crate::executor::ExecutorType::CodingAgent(executor_config.clone())
-        };
-
-        // Try to start the follow-up execution
-        let execution_result = Self::start_process_execution(
-            pool,
-            app_state,
-            attempt_id,
-            task_id,
-            followup_executor,
-            "Starting follow-up executor".to_string(),
-            TaskAttemptStatus::ExecutorRunning,
-            ExecutionProcessType::CodingAgent,
-            &worktree_path,
-        )
-        .await;
-
-        // If follow-up execution failed and we tried to use a session ID,
-        // fall back to a new session
-        if execution_result.is_err() && executor_session.session_id.is_some() {
-            tracing::warn!(
-                "SESSION_FOLLOWUP: Follow-up execution with session ID '{}' failed for attempt {}, falling back to new session. Error: {:?}",
-                executor_session.session_id.as_ref().unwrap(),
-                attempt_id,
-                execution_result.as_ref().err()
-            );
-
-            // Create a new session instead of trying to resume
-            let new_session_executor = crate::executor::ExecutorType::CodingAgent(executor_config);
-
-            Self::start_process_execution(
-                pool,
-                app_state,
-                attempt_id,
-                task_id,
-                new_session_executor,
-                "Starting new executor session (follow-up session failed)".to_string(),
-                TaskAttemptStatus::ExecutorRunning,
-                ExecutionProcessType::CodingAgent,
-                &worktree_path,
-            )
-            .await?;
-        } else {
-            // Either it succeeded or we already tried without session ID
-            execution_result?;
-        }
-
-        Ok(attempt_id)
+        // Agent Market handles follow-up execution
+        Err(TaskAttemptError::ValidationError(
+            "Follow-up execution is handled by Agent Market".to_string(),
+        ))
     }
 
     /// Unified function to start any type of process execution
@@ -610,6 +437,7 @@ impl ProcessService {
     }
 
     /// Start the setup script execution
+    #[allow(dead_code)]
     async fn start_setup_script(
         pool: &SqlitePool,
         app_state: &crate::app_state::AppState,
@@ -891,6 +719,7 @@ impl ProcessService {
     }
 
     /// Create execution process database record with delegation context
+    #[allow(dead_code)]
     async fn create_execution_process_record_with_delegation(
         pool: &SqlitePool,
         attempt_id: Uuid,
@@ -924,6 +753,7 @@ impl ProcessService {
     }
 
     /// Execute setup script process specifically
+    #[allow(dead_code)]
     async fn execute_setup_script_process(
         setup_script: &str,
         pool: &SqlitePool,

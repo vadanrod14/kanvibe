@@ -11,7 +11,7 @@ import { OnboardingDialog } from '@/components/OnboardingDialog';
 import { PrivacyOptInDialog } from '@/components/PrivacyOptInDialog';
 import { ConfigProvider, useConfig } from '@/components/config-provider';
 import { ThemeProvider } from '@/components/theme-provider';
-import type { EditorType, ExecutorConfig } from 'shared/types';
+import type { EditorType } from 'shared/types';
 import { configApi } from '@/lib/api';
 import * as Sentry from '@sentry/react';
 import { Loader } from '@/components/ui/loader';
@@ -66,7 +66,7 @@ function AppContent() {
   };
 
   const handleOnboardingComplete = async (onboardingConfig: {
-    executor: ExecutorConfig;
+    agent_market_api_key: string;
     editor: { editor_type: EditorType; custom_command: string | null };
   }) => {
     if (!config) return;
@@ -74,7 +74,7 @@ function AppContent() {
     const updatedConfig = {
       ...config,
       onboarding_acknowledged: true,
-      executor: onboardingConfig.executor,
+      agent_market_api_key: onboardingConfig.agent_market_api_key,
       editor: onboardingConfig.editor,
     };
 

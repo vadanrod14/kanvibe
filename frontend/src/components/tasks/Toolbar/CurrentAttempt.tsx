@@ -1,7 +1,6 @@
 import {
   ExternalLink,
   GitBranch as GitBranchIcon,
-  GitPullRequest,
   History,
   Play,
   Plus,
@@ -67,11 +66,9 @@ function getEditorDisplayName(editorType: string): string {
 
 type Props = {
   setError: Dispatch<SetStateAction<string | null>>;
-  setShowCreatePRDialog: Dispatch<SetStateAction<boolean>>;
   selectedBranch: string | null;
   selectedAttempt: TaskAttempt;
   taskAttempts: TaskAttempt[];
-  creatingPR: boolean;
   handleEnterCreateAttemptMode: () => void;
   availableExecutors: {
     id: string;
@@ -81,11 +78,9 @@ type Props = {
 
 function CurrentAttempt({
   setError,
-  setShowCreatePRDialog,
   selectedBranch,
   selectedAttempt,
   taskAttempts,
-  creatingPR,
   handleEnterCreateAttemptMode,
   availableExecutors,
 }: Props) {
@@ -296,17 +291,6 @@ function CurrentAttempt({
     }
   };
 
-  const handleCreatePRClick = async () => {
-    if (!projectId || !selectedAttempt?.id || !selectedAttempt?.task_id) return;
-
-    // If PR already exists, open it
-    if (selectedAttempt.pr_url) {
-      window.open(selectedAttempt.pr_url, '_blank');
-      return;
-    }
-
-    setShowCreatePRDialog(true);
-  };
 
   // Get display name for selected branch
   const selectedBranchDisplayName = useMemo(() => {
@@ -532,24 +516,6 @@ function CurrentAttempt({
               )}
               {!branchStatus.merged && (
                 <>
-                  <Button
-                    onClick={handleCreatePRClick}
-                    disabled={
-                      creatingPR ||
-                      Boolean(branchStatus.is_behind) ||
-                      isAttemptRunning
-                    }
-                    variant="outline"
-                    size="sm"
-                    className="border-blue-300 text-blue-700 hover:bg-blue-50 gap-1"
-                  >
-                    <GitPullRequest className="h-3 w-3" />
-                    {selectedAttempt.pr_url
-                      ? 'Open PR'
-                      : creatingPR
-                        ? 'Creating...'
-                        : 'Create PR'}
-                  </Button>
                   <Button
                     onClick={handleMergeClick}
                     disabled={

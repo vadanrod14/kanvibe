@@ -267,6 +267,7 @@ impl TaskServer {
             project_id: project_uuid,
             title: title.clone(),
             description: description.clone(),
+            max_reward: 100, // Default max reward for MCP created tasks
         };
 
         match Task::create(&self.pool, &create_task_data, task_id).await {

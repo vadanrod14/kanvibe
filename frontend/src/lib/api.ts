@@ -384,25 +384,6 @@ export const attemptsApi = {
     return handleApiResponse<void>(response);
   },
 
-  createPR: async (
-    projectId: string,
-    taskId: string,
-    attemptId: string,
-    data: {
-      title: string;
-      body: string | null;
-      base_branch: string | null;
-    }
-  ): Promise<string> => {
-    const response = await makeRequest(
-      `/api/projects/${projectId}/tasks/${taskId}/attempts/${attemptId}/create-pr`,
-      {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }
-    );
-    return handleApiResponse<string>(response);
-  },
 
   startDevServer: async (
     projectId: string,

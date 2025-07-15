@@ -9,8 +9,10 @@ use tracing::{info, warn};
 pub enum GitHubServiceError {
     Client(octocrab::Error),
     Auth(String),
+    #[allow(dead_code)]
     Repository(String),
     PullRequest(String),
+    #[allow(dead_code)]
     Branch(String),
     TokenInvalid,
 }
@@ -58,6 +60,7 @@ pub struct GitHubRepoInfo {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct CreatePrRequest {
     pub title: String,
     pub body: Option<String>,
@@ -115,6 +118,7 @@ impl GitHubService {
     }
 
     /// Create a pull request on GitHub
+    #[allow(dead_code)]
     pub async fn create_pr(
         &self,
         repo_info: &GitHubRepoInfo,
@@ -124,6 +128,7 @@ impl GitHubService {
             .await
     }
 
+    #[allow(dead_code)]
     async fn create_pr_internal(
         &self,
         repo_info: &GitHubRepoInfo,

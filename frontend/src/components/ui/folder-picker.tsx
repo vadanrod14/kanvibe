@@ -66,6 +66,7 @@ export function FolderPicker({
 
     try {
       const result = await fileSystemApi.list(path);
+      // The API now returns DirectoryListResponse with entries and current_path
       setEntries(result.entries || []);
       const newPath = result.current_path || '';
       setCurrentPath(newPath);
@@ -74,7 +75,10 @@ export function FolderPicker({
         setManualPath(newPath);
       }
     } catch (err) {
+      console.error('Error loading directory:', err);
       setError(err instanceof Error ? err.message : 'Failed to load directory');
+      // Reset entries to empty array on error
+      setEntries([]);
     } finally {
       setLoading(false);
     }

@@ -56,7 +56,7 @@ export type UpdateTask = { title: string | null, description: string | null, sta
 
 export type TaskAttemptStatus = "setuprunning" | "setupcomplete" | "setupfailed" | "executorrunning" | "executorcomplete" | "executorfailed";
 
-export type TaskAttempt = { id: string, task_id: string, worktree_path: string, branch: string, base_branch: string, merge_commit: string | null, executor: string | null, pr_url: string | null, pr_number: bigint | null, pr_status: string | null, pr_merged_at: string | null, worktree_deleted: boolean, setup_completed_at: string | null, created_at: string, updated_at: string, };
+export type TaskAttempt = { id: string, task_id: string, branch: string, base_branch: string, merge_commit: string | null, executor: string | null, pr_url: string | null, pr_number: bigint | null, pr_status: string | null, pr_merged_at: string | null, setup_completed_at: string | null, created_at: string, updated_at: string, };
 
 export type CreateTaskAttempt = { executor: string | null, base_branch: string | null, };
 
@@ -111,33 +111,6 @@ export type NormalizedEntry = { timestamp: string | null, entry_type: Normalized
 export type NormalizedEntryType = { "type": "user_message" } | { "type": "assistant_message" } | { "type": "tool_use", tool_name: string, action_type: ActionType, } | { "type": "system_message" } | { "type": "error_message" } | { "type": "thinking" };
 
 export type ActionType = { "action": "file_read", path: string, } | { "action": "file_write", path: string, } | { "action": "command_run", command: string, } | { "action": "search", query: string, } | { "action": "web_fetch", url: string, } | { "action": "task_create", description: string, } | { "action": "other", description: string, };
-
-export type StartGitHubDeviceFlowType = {
-  device_code: string;
-  user_code: string;
-  verification_uri: string;
-  expires_in: number;
-  interval: number;
-};
-
-export type AttemptData = {
-  activities: Array<TaskAttemptActivityWithPrompt>;
-  processes: Array<ExecutionProcessSummary>;
-  runningProcessDetails: Record<string, ExecutionProcess>;
-};
-
-export type ProcessedLine = {
-  chunkType: DiffChunkType;
-  content: string;
-  oldLineNumber?: number;
-  newLineNumber?: number;
-};
-
-export type ProcessedSection = {
-  type: 'context' | 'expanded' | 'normal' | 'change';
-  lines: Array<ProcessedLine>;
-  expandKey?: string;
-};
 
 // Generated constants
 export const EXECUTOR_TYPES: string[] = [

@@ -20,6 +20,13 @@ pub struct DirectoryEntry {
     pub is_git_repo: bool,
 }
 
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct DirectoryListResponse {
+    pub entries: Vec<DirectoryEntry>,
+    pub current_path: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ListDirectoryQuery {
     path: Option<String>,
@@ -27,7 +34,7 @@ pub struct ListDirectoryQuery {
 
 pub async fn list_directory(
     Query(query): Query<ListDirectoryQuery>,
-) -> Result<ResponseJson<ApiResponse<Vec<DirectoryEntry>>>, StatusCode> {
+) -> Result<ResponseJson<ApiResponse<DirectoryListResponse>>, StatusCode> {
     let path_str = query.path.unwrap_or_else(|| {
         // Default to user's home directory
         dirs::home_dir()
@@ -69,10 +76,10 @@ pub async fn list_directory(
             let mut directory_entries = Vec::new();
 
             for entry in entries.flatten() {
-                let path = entry.path();
+                let entry_path = entry.path();
                 let metadata = entry.metadata().ok();
 
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if let Some(name) = entry_path.file_name().and_then(|n| n.to_str()) {
                     // Skip hidden files/directories
                     if name.starts_with('.') && name != ".." {
                         continue;
@@ -80,14 +87,14 @@ pub async fn list_directory(
 
                     let is_directory = metadata.is_some_and(|m| m.is_dir());
                     let is_git_repo = if is_directory {
-                        path.join(".git").exists()
+                        entry_path.join(".git").exists()
                     } else {
                         false
                     };
 
                     directory_entries.push(DirectoryEntry {
                         name: name.to_string(),
-                        path: path.to_string_lossy().to_string(),
+                        path: entry_path.to_string_lossy().to_string(),
                         is_directory,
                         is_git_repo,
                     });
@@ -101,9 +108,14 @@ pub async fn list_directory(
                 _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
             });
 
+            let response = DirectoryListResponse {
+                entries: directory_entries,
+                current_path: path.to_string_lossy().to_string(),
+            };
+
             Ok(ResponseJson(ApiResponse {
                 success: true,
-                data: Some(directory_entries),
+                data: Some(response),
                 message: None,
             }))
         }

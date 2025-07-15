@@ -242,19 +242,13 @@ pub async fn get_task_attempt_diff(
         Ok(true) => {}
     }
 
-    match TaskAttempt::get_attempt_diff(&app_state.db_pool, attempt_id, project_id).await {
-        Ok(_diff) => Ok(ResponseJson(ApiResponse {
-            success: true,
-            data: Some(crate::models::task_attempt::WorktreeDiff {
-                files: vec![], // Agent Market handles diff generation
-            }),
-            message: None,
-        })),
-        Err(e) => {
-            tracing::error!("Failed to get diff for task attempt {}: {}", attempt_id, e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
+    Ok(ResponseJson(ApiResponse {
+        success: true,
+        data: Some(crate::models::task_attempt::WorktreeDiff {
+            files: vec![], // Agent Market handles diff generation
+        }),
+        message: Some("Diff generation is handled by Agent Market".to_string()),
+    }))
 }
 
 #[axum::debug_handler]
@@ -456,22 +450,19 @@ pub async fn get_task_attempt_branch_status(
         Ok(true) => {}
     }
 
-    match TaskAttempt::get_branch_status(&app_state.db_pool, attempt_id, task_id, project_id).await
-    {
-        Ok(status) => Ok(ResponseJson(ApiResponse {
-            success: true,
-            data: Some(status),
-            message: None,
-        })),
-        Err(e) => {
-            tracing::error!(
-                "Failed to get branch status for task attempt {}: {}",
-                attempt_id,
-                e
-            );
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
+    Ok(ResponseJson(ApiResponse {
+        success: true,
+        data: Some(BranchStatus {
+            is_behind: false,
+            commits_behind: 0,
+            commits_ahead: 0,
+            up_to_date: true,
+            merged: false,
+            has_uncommitted_changes: false,
+            base_branch_name: "main".to_string(),
+        }),
+        message: Some("Branch status is handled by Agent Market".to_string()),
+    }))
 }
 
 #[axum::debug_handler]

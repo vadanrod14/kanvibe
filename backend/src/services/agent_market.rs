@@ -19,7 +19,7 @@ impl AgentMarketClient {
     pub fn new() -> Self {
         Self {
             client: Client::new(),
-            base_url: "http://api.agent.market".to_string(),
+            base_url: "https://api.agent.market".to_string(),
         }
     }
 
@@ -58,7 +58,7 @@ impl AgentMarketClient {
         let response = self
             .client
             .post(&url)
-            .header("Authorization", format!("Bearer {}", api_key))
+            .header("X-API-KEY", api_key)
             .header("Content-Type", "application/json")
             .json(&payload)
             .send()

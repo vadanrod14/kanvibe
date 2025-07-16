@@ -23,6 +23,8 @@ import type {
   TaskWithAttemptStatus,
 } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
+import { AgentMarketApiKeyDialog } from '@/components/AgentMarketApiKeyDialog';
+import { ApiError } from '@/lib/api';
 
 type Task = TaskWithAttemptStatus;
 
@@ -44,6 +46,14 @@ export function ProjectTasks() {
   // Panel state
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+
+  // Add state for API key dialog
+  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
+  const [pendingCreateAndStartParams, setPendingCreateAndStartParams] = useState<{
+    title: string;
+    description: string;
+    maxReward: number;
+  } | null>(null);
 
   // Define task creation handler
   const handleCreateNewTask = useCallback(() => {
@@ -97,6 +107,10 @@ export function ProjectTasks() {
         });
         setIsPanelOpen(true);
       }
+    } else if (!taskId) {
+      // Close panel when taskId is removed from URL
+      setIsPanelOpen(false);
+      setSelectedTask(null);
     }
   }, [taskId, tasks]);
 
@@ -182,12 +196,53 @@ export function ProjectTasks() {
         await fetchTasks();
         // Open the newly created task in the details panel
         handleViewTaskDetails(result);
-      } catch (err) {
-        setError('Failed to create and start task');
+      } catch (error) {
+        // Check if this is the specific Agent Market API key error
+        if (error instanceof ApiError && 
+            error.message === 'Agent Market API key is required to run tasks. Please configure your API key in the application settings.') {
+          // Store the task parameters for retry after API key is configured
+          setPendingCreateAndStartParams({ title, description, maxReward });
+          setShowApiKeyDialog(true);
+        } else if (error instanceof ApiError) {
+          // For other API errors, show the specific error message to the user
+          // This will now catch Agent Market authentication errors and other API failures
+          console.error('Failed to create and start task:', error.message);
+          setError(`Failed to create and start task: ${error.message}`);
+        } else {
+          // For unexpected errors, show a generic error message
+          console.error('Failed to create and start task:', error);
+          setError('Failed to create and start task');
+        }
       }
     },
     [projectId, fetchTasks]
   );
+
+  const handleApiKeySaved = async () => {
+    setShowApiKeyDialog(false);
+    
+    // Retry creating and starting the task with the stored parameters
+    if (pendingCreateAndStartParams) {
+      const { title, description, maxReward } = pendingCreateAndStartParams;
+      setPendingCreateAndStartParams(null);
+      
+      try {
+        const payload: CreateTaskAndStart = {
+          project_id: projectId!,
+          title,
+          description: description || null,
+          max_reward: maxReward,
+        };
+        const result = await tasksApi.createAndStart(projectId!, payload);
+        await fetchTasks();
+        // Open the newly created task in the details panel
+        handleViewTaskDetails(result);
+      } catch (error) {
+        console.error('Failed to create and start task after API key configuration:', error);
+        setError('Failed to create and start task');
+      }
+    }
+  };
 
   const handleUpdateTask = useCallback(
     async (title: string, description: string, status: TaskStatus) => {
@@ -402,6 +457,12 @@ export function ProjectTasks() {
         onClose={() => setIsProjectSettingsOpen(false)}
         onSuccess={handleProjectSettingsSuccess}
         project={project}
+      />
+
+      <AgentMarketApiKeyDialog
+        open={showApiKeyDialog}
+        onOpenChange={setShowApiKeyDialog}
+        onApiKeySaved={handleApiKeySaved}
       />
     </div>
   );

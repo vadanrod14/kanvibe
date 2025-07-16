@@ -10,7 +10,8 @@ use crate::{
         ActionType, Executor, ExecutorError, NormalizedConversation, NormalizedEntry,
         NormalizedEntryType,
     },
-    models::task::Task,
+    models::{project::Project, task::Task},
+    services::github_service::{CreateIssueRequest, GitHubRepoInfo, GitHubService},
     utils::shell::get_shell_command,
 };
 
@@ -25,6 +26,178 @@ pub struct ClaudeFollowupExecutor {
 
 #[async_trait]
 impl Executor for ClaudeExecutor {
+    async fn spawn_with_context(
+        &self,
+        pool: &sqlx::SqlitePool,
+        app_state: &crate::app_state::AppState,
+        task_id: Uuid,
+        worktree_path: &str,
+    ) -> Result<AsyncGroupChild, ExecutorError> {
+        // Get the task to fetch its description
+        let task = Task::find_by_id(pool, task_id)
+            .await?
+            .ok_or(ExecutorError::TaskNotFound)?;
+
+        // Get the project to access the git repo URL
+        let project = Project::find_by_id(pool, task.project_id)
+            .await?
+            .ok_or_else(|| ExecutorError::ContextCollectionFailed("Project not found".to_string()))?;
+
+        // Try to create GitHub issue if we have a GitHub token and valid repo URL
+        let mut background = String::new();
+        let config = app_state.get_config().read().await;
+        if let Some(github_token) = &config.github.token {
+            if let Ok((repo_owner, repo_name)) = self.parse_repo_url(&project.git_repo_path) {
+                let repo_info = GitHubRepoInfo {
+                    owner: repo_owner,
+                    repo_name,
+                };
+
+                let issue_request = CreateIssueRequest {
+                    title: task.title.clone(),
+                    body: task.description.clone(),
+                    labels: None,
+                    assignees: None,
+                };
+
+                match GitHubService::new(github_token) {
+                    Ok(github_service) => {
+                        match github_service.create_issue(&repo_info, &issue_request).await {
+                            Ok(issue) => {
+                                background = format!(
+                                    r#"Repository URL: {}
+Issue Title: {}
+Issue URL: {}
+Issue Number: {}
+
+Issue Description:
+{}
+
+Please analyze this issue and provide suggestions for resolution.
+Make sure to include "Fixes #{}" in your answer."#,
+                                    project.git_repo_path,
+                                    issue.title,
+                                    issue.url,
+                                    issue.number,
+                                    issue.body.as_deref().unwrap_or(""),
+                                    issue.number
+                                );
+                                tracing::info!(
+                                    "Successfully created GitHub issue #{} for task {} in repo {}/{}",
+                                    issue.number,
+                                    task_id,
+                                    repo_info.owner,
+                                    repo_info.repo_name
+                                );
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to create GitHub issue for task {}: {}",
+                                    task_id,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to create GitHub service for task {}: {}",
+                            task_id,
+                            e
+                        );
+                    }
+                }
+            } else {
+                tracing::debug!(
+                    "Cannot parse GitHub repo URL from '{}' for task {}",
+                    project.git_repo_path,
+                    task_id
+                );
+            }
+        } else {
+            tracing::debug!("No GitHub token available for task {}", task_id);
+        }
+        drop(config);
+
+        // Build the prompt with optional GitHub issue background
+        let prompt = if background.is_empty() {
+            // No GitHub issue created, use original format
+            if let Some(task_description) = task.description {
+                format!(
+                    r#"project_id: {}
+            
+Task title: {}
+Task description: {}"#,
+                    task.project_id, task.title, task_description
+                )
+            } else {
+                format!(
+                    r#"project_id: {}
+            
+Task title: {}"#,
+                    task.project_id, task.title
+                )
+            }
+        } else {
+            // GitHub issue created, include background
+            format!(
+                r#"project_id: {}
+
+{}"#,
+                task.project_id, background
+            )
+        };
+
+        // Use shell command for cross-platform compatibility
+        let (shell_cmd, shell_arg) = get_shell_command();
+        // Pass prompt via stdin instead of command line to avoid shell escaping issues
+        let claude_command = "npx -y @anthropic-ai/claude-code@latest -p --dangerously-skip-permissions --verbose --output-format=stream-json";
+
+        let mut command = Command::new(shell_cmd);
+        command
+            .kill_on_drop(true)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .current_dir(worktree_path)
+            .arg(shell_arg)
+            .arg(claude_command)
+            .env("NODE_NO_WARNINGS", "1");
+
+        let mut child = command
+            .group_spawn() // Create new process group so we can kill entire tree
+            .map_err(|e| {
+                crate::executor::SpawnContext::from_command(&command, "Claude")
+                    .with_task(task_id, Some(task.title.clone()))
+                    .with_context("Claude CLI execution for new task with GitHub issue")
+                    .spawn_error(e)
+            })?;
+
+        // Write prompt to stdin safely
+        if let Some(mut stdin) = child.inner().stdin.take() {
+            use tokio::io::AsyncWriteExt;
+            tracing::debug!(
+                "Writing prompt to Claude stdin for task {}: {:?}",
+                task_id,
+                prompt
+            );
+            stdin.write_all(prompt.as_bytes()).await.map_err(|e| {
+                let context = crate::executor::SpawnContext::from_command(&command, "Claude")
+                    .with_task(task_id, Some(task.title.clone()))
+                    .with_context("Failed to write prompt to Claude CLI stdin");
+                ExecutorError::spawn_failed(e, context)
+            })?;
+            stdin.shutdown().await.map_err(|e| {
+                let context = crate::executor::SpawnContext::from_command(&command, "Claude")
+                    .with_task(task_id, Some(task.title.clone()))
+                    .with_context("Failed to close Claude CLI stdin");
+                ExecutorError::spawn_failed(e, context)
+            })?;
+        }
+
+        Ok(child)
+    }
+
     async fn spawn(
         &self,
         pool: &sqlx::SqlitePool,
@@ -285,6 +458,28 @@ Task title: {}"#,
 }
 
 impl ClaudeExecutor {
+    /// Parse GitHub repository URL to extract owner and repo name
+    fn parse_repo_url(&self, repo_url: &str) -> Result<(String, String), &'static str> {
+        // Handle different GitHub URL formats:
+        // https://github.com/owner/repo
+        // https://github.com/owner/repo.git
+        // git@github.com:owner/repo.git
+        // ssh://git@github.com/owner/repo.git
+
+        let url = repo_url.trim().trim_end_matches('/').trim_end_matches(".git");
+
+        if let Some(captures) = regex::Regex::new(r"github\.com[:/]([^/]+)/([^/]+)(?:\.git)?/?$")
+            .unwrap()
+            .captures(url)
+        {
+            let owner = captures.get(1).unwrap().as_str().to_string();
+            let repo = captures.get(2).unwrap().as_str().to_string();
+            Ok((owner, repo))
+        } else {
+            Err("Invalid GitHub repository URL format")
+        }
+    }
+
     /// Convert absolute paths to relative paths based on worktree path
     fn make_path_relative(&self, path: &str, worktree_path: &str) -> String {
         let path_obj = Path::new(path);

@@ -15,11 +15,7 @@ import CreateAttempt from '@/components/tasks/Toolbar/CreateAttempt.tsx';
 import CurrentAttempt from '@/components/tasks/Toolbar/CurrentAttempt.tsx';
 
 const availableExecutors = [
-  { id: 'echo', name: 'Echo' },
-  { id: 'claude', name: 'Claude' },
-  { id: 'amp', name: 'Amp' },
-  { id: 'gemini', name: 'Gemini' },
-  { id: 'opencode', name: 'OpenCode' },
+  { id: 'agent_market', name: 'Agent Market' },
 ];
 
 function TaskDetailsToolbar() {
@@ -40,7 +36,7 @@ function TaskDetailsToolbar() {
   const [branches, setBranches] = useState<GitBranch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
 
-  const [selectedExecutor] = useState<string>('claude');
+  const [selectedExecutor] = useState<string>('agent_market');
 
   // State for create attempt mode
   const [isInCreateAttemptMode, setIsInCreateAttemptMode] = useState(false);
@@ -48,7 +44,7 @@ function TaskDetailsToolbar() {
     selectedBranch
   );
   const [createAttemptExecutor, setCreateAttemptExecutor] =
-    useState<string>(selectedExecutor);
+    useState<string>('agent_market');
 
   // Branch status and git operations state
   const [error, setError] = useState<string | null>(null);
@@ -92,15 +88,10 @@ function TaskDetailsToolbar() {
         setCreateAttemptBranch(latestAttempt.base_branch);
       }
 
-      // Only update executor if it's different from default and exists in available executors
-      if (
-        latestAttempt.executor &&
-        availableExecutors.some((e) => e.id === latestAttempt.executor)
-      ) {
-        setCreateAttemptExecutor(latestAttempt.executor);
-      }
+      // Always use agent_market as the executor
+      setCreateAttemptExecutor('agent_market');
     }
-  }, [taskAttempts, branches, availableExecutors]);
+  }, [taskAttempts, branches]);
 
   const fetchTaskAttempts = useCallback(async () => {
     if (!task) return;
@@ -168,21 +159,14 @@ function TaskDetailsToolbar() {
         setCreateAttemptBranch(selectedBranch);
       }
 
-      // Use latest attempt's executor if it exists, otherwise use current selected executor
-      if (
-        latestAttempt.executor &&
-        availableExecutors.some((e) => e.id === latestAttempt.executor)
-      ) {
-        setCreateAttemptExecutor(latestAttempt.executor);
-      } else {
-        setCreateAttemptExecutor(selectedExecutor);
-      }
+      // Always use agent_market as the executor
+      setCreateAttemptExecutor('agent_market');
     } else {
       // Fallback to current selected values if no attempts exist
       setCreateAttemptBranch(selectedBranch);
-      setCreateAttemptExecutor(selectedExecutor);
+      setCreateAttemptExecutor('agent_market');
     }
-  }, [taskAttempts, branches, selectedBranch, selectedExecutor]);
+  }, [taskAttempts, branches, selectedBranch]);
 
   return (
     <>

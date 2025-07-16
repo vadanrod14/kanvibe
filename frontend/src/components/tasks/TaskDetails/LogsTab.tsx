@@ -10,6 +10,7 @@ import {
 import Conversation from '@/components/tasks/TaskDetails/LogsTab/Conversation.tsx';
 import { Loader } from '@/components/ui/loader';
 import SetupScriptRunning from '@/components/tasks/TaskDetails/LogsTab/SetupScriptRunning.tsx';
+import type { ExecutionProcess } from 'shared/types';
 
 function LogsTab() {
   const { loading } = useContext(TaskAttemptLoadingContext);
@@ -75,9 +76,9 @@ function LogsTab() {
 
   // When setup failed, show error message and conversation
   if (isSetupFailed) {
-    const setupProcess = executionState.setup_process_id
+    const setupProcess: ExecutionProcess | undefined = executionState.setup_process_id
       ? attemptData.runningProcessDetails[executionState.setup_process_id]
-      : Object.values(attemptData.runningProcessDetails).find(
+      : (Object.values(attemptData.runningProcessDetails) as ExecutionProcess[]).find(
           (process) => process.process_type === 'setupscript'
         );
 
@@ -101,11 +102,11 @@ function LogsTab() {
 
   // When coding agent failed, show error message and conversation
   if (isCodingAgentFailed) {
-    const codingAgentProcess = executionState.coding_agent_process_id
+    const codingAgentProcess: ExecutionProcess | undefined = executionState.coding_agent_process_id
       ? attemptData.runningProcessDetails[
           executionState.coding_agent_process_id
         ]
-      : Object.values(attemptData.runningProcessDetails).find(
+      : (Object.values(attemptData.runningProcessDetails) as ExecutionProcess[]).find(
           (process) => process.process_type === 'codingagent'
         );
 
@@ -127,7 +128,7 @@ function LogsTab() {
     );
   }
 
-  // When setup is complete but coding agent hasn't started, show waiting state
+  // When setup is complete but coding agent hasn't started, show setup logs
   if (
     isSetupComplete &&
     !isCodingAgentRunning &&
@@ -135,6 +136,29 @@ function LogsTab() {
     !isCodingAgentFailed &&
     !hasChanges
   ) {
+    // Find the setup process to show its logs
+    const setupProcess: ExecutionProcess | undefined = executionState.setup_process_id
+      ? attemptData.runningProcessDetails[executionState.setup_process_id]
+      : (Object.values(attemptData.runningProcessDetails) as ExecutionProcess[]).find(
+          (process) => process.process_type === 'setupscript'
+        );
+
+    if (setupProcess) {
+      return (
+        <div className="h-full overflow-y-auto">
+          <div className="mb-4">
+            <p className="text-lg font-semibold mb-2 text-green-600">
+              Setup Complete
+            </p>
+            <p className="text-muted-foreground mb-4">
+              Waiting for coding agent to start...
+            </p>
+          </div>
+          <NormalizedConversationViewer executionProcess={setupProcess} />
+        </div>
+      );
+    }
+
     return (
       <div className="text-center py-8 text-muted-foreground">
         <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />

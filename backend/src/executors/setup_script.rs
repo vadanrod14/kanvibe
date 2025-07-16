@@ -65,57 +65,111 @@ impl Executor for SetupScriptExecutor {
     ) -> Result<crate::executor::NormalizedConversation, String> {
         let mut entries = Vec::new();
 
-        // Add script command as first entry
-        entries.push(crate::executor::NormalizedEntry {
-            timestamp: None,
-            entry_type: crate::executor::NormalizedEntryType::SystemMessage,
-            content: format!("Executing setup script:\n{}", self.script),
-            metadata: None,
+        // Check if logs are in JSONL format
+        let is_jsonl = logs.lines().all(|line| {
+            line.trim().is_empty() || (line.trim().starts_with('{') && line.trim().ends_with('}'))
         });
 
-        // Process the logs - split by lines and create entries
-        if !logs.trim().is_empty() {
-            let lines: Vec<&str> = logs.lines().collect();
-            let mut current_chunk = String::new();
+        if is_jsonl {
+            // Parse JSONL format
+            for line in logs.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
 
-            for line in lines {
-                current_chunk.push_str(line);
-                current_chunk.push('\n');
+                match serde_json::from_str::<serde_json::Value>(trimmed) {
+                    Ok(json) => {
+                        // Extract fields from JSON
+                        let timestamp = json.get("timestamp")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        
+                        let content = json.get("content")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(trimmed)
+                            .to_string();
+                        
+                        let entry_type = match json.get("type").and_then(|v| v.as_str()) {
+                            Some("user_message") => crate::executor::NormalizedEntryType::UserMessage,
+                            Some("assistant_message") => crate::executor::NormalizedEntryType::AssistantMessage,
+                            Some("system_message") => crate::executor::NormalizedEntryType::SystemMessage,
+                            Some("error_message") => crate::executor::NormalizedEntryType::ErrorMessage,
+                            _ => crate::executor::NormalizedEntryType::SystemMessage,
+                        };
 
-                // Create entry for every 10 lines or when we encounter an error-like line
-                if current_chunk.lines().count() >= 10
-                    || line.to_lowercase().contains("error")
-                    || line.to_lowercase().contains("failed")
-                    || line.to_lowercase().contains("exception")
-                {
-                    let entry_type = if line.to_lowercase().contains("error")
+                        entries.push(crate::executor::NormalizedEntry {
+                            timestamp,
+                            entry_type,
+                            content,
+                            metadata: None,
+                        });
+                    }
+                    Err(_) => {
+                        // If JSON parsing fails, treat as plain text
+                        entries.push(crate::executor::NormalizedEntry {
+                            timestamp: Some(chrono::Utc::now().to_rfc3339()),
+                            entry_type: crate::executor::NormalizedEntryType::SystemMessage,
+                            content: trimmed.to_string(),
+                            metadata: None,
+                        });
+                    }
+                }
+            }
+        } else {
+            // Original plain text processing
+            // Add script command as first entry
+            entries.push(crate::executor::NormalizedEntry {
+                timestamp: None,
+                entry_type: crate::executor::NormalizedEntryType::SystemMessage,
+                content: format!("Executing setup script:\n{}", self.script),
+                metadata: None,
+            });
+
+            // Process the logs - split by lines and create entries
+            if !logs.trim().is_empty() {
+                let lines: Vec<&str> = logs.lines().collect();
+                let mut current_chunk = String::new();
+
+                for line in lines {
+                    current_chunk.push_str(line);
+                    current_chunk.push('\n');
+
+                    // Create entry for every 10 lines or when we encounter an error-like line
+                    if current_chunk.lines().count() >= 10
+                        || line.to_lowercase().contains("error")
                         || line.to_lowercase().contains("failed")
                         || line.to_lowercase().contains("exception")
                     {
-                        crate::executor::NormalizedEntryType::ErrorMessage
-                    } else {
-                        crate::executor::NormalizedEntryType::SystemMessage
-                    };
+                        let entry_type = if line.to_lowercase().contains("error")
+                            || line.to_lowercase().contains("failed")
+                            || line.to_lowercase().contains("exception")
+                        {
+                            crate::executor::NormalizedEntryType::ErrorMessage
+                        } else {
+                            crate::executor::NormalizedEntryType::SystemMessage
+                        };
 
+                        entries.push(crate::executor::NormalizedEntry {
+                            timestamp: Some(chrono::Utc::now().to_rfc3339()),
+                            entry_type,
+                            content: current_chunk.trim().to_string(),
+                            metadata: None,
+                        });
+
+                        current_chunk.clear();
+                    }
+                }
+
+                // Add any remaining content
+                if !current_chunk.trim().is_empty() {
                     entries.push(crate::executor::NormalizedEntry {
                         timestamp: Some(chrono::Utc::now().to_rfc3339()),
-                        entry_type,
+                        entry_type: crate::executor::NormalizedEntryType::SystemMessage,
                         content: current_chunk.trim().to_string(),
                         metadata: None,
                     });
-
-                    current_chunk.clear();
                 }
-            }
-
-            // Add any remaining content
-            if !current_chunk.trim().is_empty() {
-                entries.push(crate::executor::NormalizedEntry {
-                    timestamp: Some(chrono::Utc::now().to_rfc3339()),
-                    entry_type: crate::executor::NormalizedEntryType::SystemMessage,
-                    content: current_chunk.trim().to_string(),
-                    metadata: None,
-                });
             }
         }
 

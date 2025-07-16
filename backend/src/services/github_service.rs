@@ -79,6 +79,23 @@ pub struct PullRequestInfo {
 }
 
 #[derive(Debug, Clone)]
+pub struct CreateIssueRequest {
+    pub title: String,
+    pub body: Option<String>,
+    pub labels: Option<Vec<String>>,
+    pub assignees: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssueInfo {
+    pub number: i64,
+    pub title: String,
+    pub url: String,
+    pub body: Option<String>,
+    pub state: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct GitHubService {
     client: Octocrab,
     retry_config: RetryConfig,
@@ -115,6 +132,90 @@ impl GitHubService {
             client,
             retry_config: RetryConfig::default(),
         })
+    }
+
+    /// Create an issue on GitHub
+    pub async fn create_issue(
+        &self,
+        repo_info: &GitHubRepoInfo,
+        request: &CreateIssueRequest,
+    ) -> Result<IssueInfo, GitHubServiceError> {
+        self.with_retry(|| async { self.create_issue_internal(repo_info, request).await })
+            .await
+    }
+
+    async fn create_issue_internal(
+        &self,
+        repo_info: &GitHubRepoInfo,
+        request: &CreateIssueRequest,
+    ) -> Result<IssueInfo, GitHubServiceError> {
+        // Verify repository access
+        self.client
+            .repos(&repo_info.owner, &repo_info.repo_name)
+            .get()
+            .await
+            .map_err(|e| {
+                GitHubServiceError::Repository(format!(
+                    "Cannot access repository {}/{}: {}",
+                    repo_info.owner, repo_info.repo_name, e
+                ))
+            })?;
+
+        // Create the issue
+        let issues_handler = self.client.issues(&repo_info.owner, &repo_info.repo_name);
+        let mut issue_builder = issues_handler.create(&request.title);
+
+        if let Some(body) = &request.body {
+            issue_builder = issue_builder.body(body);
+        }
+
+        if let Some(labels) = &request.labels {
+            issue_builder = issue_builder.labels(labels.clone());
+        }
+
+        if let Some(assignees) = &request.assignees {
+            issue_builder = issue_builder.assignees(assignees.clone());
+        }
+
+        let issue = issue_builder.send().await.map_err(|e| match e {
+            octocrab::Error::GitHub { source, .. } => {
+                if source.status_code.as_u16() == 401
+                    || source.status_code.as_u16() == 403
+                    || source
+                        .message
+                        .to_ascii_lowercase()
+                        .contains("bad credentials")
+                    || source
+                        .message
+                        .to_ascii_lowercase()
+                        .contains("token expired")
+                {
+                    GitHubServiceError::TokenInvalid
+                } else {
+                    GitHubServiceError::PullRequest(format!(
+                        "GitHub API error: {} (status: {})",
+                        source.message,
+                        source.status_code.as_u16()
+                    ))
+                }
+            }
+            _ => GitHubServiceError::PullRequest(format!("Failed to create issue: {}", e)),
+        })?;
+
+        let issue_info = IssueInfo {
+            number: issue.number as i64,
+            title: issue.title,
+            url: issue.html_url.to_string(),
+            body: issue.body,
+            state: format!("{:?}", issue.state).to_lowercase(),
+        };
+
+        info!(
+            "Created GitHub issue #{} in {}/{}",
+            issue_info.number, repo_info.owner, repo_info.repo_name
+        );
+
+        Ok(issue_info)
     }
 
     /// Create a pull request on GitHub

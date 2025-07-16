@@ -33,6 +33,7 @@ import {
 import type {
   BranchStatus,
   ExecutionProcess,
+  ExecutionProcessSummary,
   TaskAttempt,
 } from 'shared/types.ts';
 import {
@@ -117,7 +118,7 @@ function CurrentAttempt({
   // Find running dev server in current project
   const runningDevServer = useMemo(() => {
     return attemptData.processes.find(
-      (process) =>
+      (process: ExecutionProcessSummary) =>
         process.process_type === 'devserver' && process.status === 'running'
     );
   }, [attemptData.processes]);
@@ -331,10 +332,7 @@ function CurrentAttempt({
             Agent
           </div>
           <div className="text-sm font-medium">
-            {availableExecutors.find((e) => e.id === selectedAttempt.executor)
-              ?.name ||
-              selectedAttempt.executor ||
-              'Unknown'}
+            Agent Market
           </div>
         </div>
 
@@ -377,25 +375,6 @@ function CurrentAttempt({
         </div>
       </div>
 
-      <div className="col-span-4">
-        <div className="flex items-center gap-1.5 mb-1">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Worktree Path
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleOpenInEditor()}
-            className="h-6 px-2 text-xs hover:bg-muted gap-1"
-          >
-            <ExternalLink className="h-3 w-3" />
-            Open in {editorDisplayName}
-          </Button>
-        </div>
-        <div className="text-xs font-mono text-muted-foreground bg-muted px-2 py-1 rounded break-all">
-          {selectedAttempt.worktree_path}
-        </div>
-      </div>
 
       <div className="col-span-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">

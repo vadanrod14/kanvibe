@@ -261,6 +261,18 @@ pub trait Executor: Send + Sync {
         worktree_path: &str,
     ) -> Result<command_group::AsyncGroupChild, ExecutorError>;
 
+    /// Spawn the command for a given task attempt with app state context
+    async fn spawn_with_context(
+        &self,
+        pool: &sqlx::SqlitePool,
+        _app_state: &crate::app_state::AppState,
+        task_id: Uuid,
+        worktree_path: &str,
+    ) -> Result<command_group::AsyncGroupChild, ExecutorError> {
+        // Default implementation calls the original spawn method
+        self.spawn(pool, task_id, worktree_path).await
+    }
+
     /// Normalize executor logs into a standard format
     fn normalize_logs(
         &self,
@@ -287,6 +299,52 @@ pub trait Executor: Send + Sync {
         worktree_path: &str,
     ) -> Result<command_group::AsyncGroupChild, ExecutorError> {
         let mut child = self.spawn(pool, task_id, worktree_path).await?;
+
+        // Take stdout and stderr pipes for streaming
+        let stdout = child
+            .inner()
+            .stdout
+            .take()
+            .expect("Failed to take stdout from child process");
+        let stderr = child
+            .inner()
+            .stderr
+            .take()
+            .expect("Failed to take stderr from child process");
+
+        // Start streaming tasks
+        let pool_clone1 = pool.clone();
+        let pool_clone2 = pool.clone();
+
+        tokio::spawn(stream_output_to_db(
+            stdout,
+            pool_clone1,
+            attempt_id,
+            execution_process_id,
+            true,
+        ));
+        tokio::spawn(stream_output_to_db(
+            stderr,
+            pool_clone2,
+            attempt_id,
+            execution_process_id,
+            false,
+        ));
+
+        Ok(child)
+    }
+
+    /// Execute the command and stream output to database in real-time with app state context
+    async fn execute_streaming_with_context(
+        &self,
+        pool: &sqlx::SqlitePool,
+        app_state: &crate::app_state::AppState,
+        task_id: Uuid,
+        attempt_id: Uuid,
+        execution_process_id: Uuid,
+        worktree_path: &str,
+    ) -> Result<command_group::AsyncGroupChild, ExecutorError> {
+        let mut child = self.spawn_with_context(pool, app_state, task_id, worktree_path).await?;
 
         // Take stdout and stderr pipes for streaming
         let stdout = child

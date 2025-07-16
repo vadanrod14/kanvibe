@@ -17,6 +17,7 @@ use crate::{
             ExecutionProcess, ExecutionProcessStatus, ExecutionProcessSummary, ExecutionProcessType,
         },
         executor_session::ExecutorSession,
+        project::Project,
         task::Task,
         task_attempt::{
             BranchStatus, CreateFollowUpAttempt, CreateTaskAttempt, TaskAttempt, TaskAttemptState,
@@ -27,6 +28,7 @@ use crate::{
         },
         ApiResponse,
     },
+    services::agent_market::AgentMarketClient,
 };
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -124,6 +126,23 @@ pub async fn create_task_attempt(
         Ok(true) => {}
     }
 
+    // Check Agent Market API key before creating task attempt
+    let config = match Config::load(&crate::utils::config_path()) {
+        Ok(config) => config,
+        Err(e) => {
+            tracing::error!("Failed to load config: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    if config.agent_market_api_key.is_none() {
+        return Ok(ResponseJson(ApiResponse {
+            success: false,
+            data: None,
+            message: Some("Agent Market API key is required to run tasks. Please configure your API key in the application settings.".to_string()),
+        }));
+    }
+
     let executor_string = payload.executor.as_ref().map(|exec| exec.to_string());
 
     match TaskAttempt::create(&app_state.db_pool, &payload, task_id).await {
@@ -139,26 +158,137 @@ pub async fn create_task_attempt(
                 )
                 .await;
 
-            // Start execution asynchronously (don't block the response)
-            let app_state_clone = app_state.clone();
-            let attempt_id = attempt.id;
-            tokio::spawn(async move {
-                if let Err(e) = TaskAttempt::start_execution(
-                    &app_state_clone.db_pool,
-                    &app_state_clone,
-                    attempt_id,
-                    task_id,
-                    project_id,
-                )
-                .await
-                {
+            // Validate Agent Market API key and create instance synchronously
+            match create_agent_market_instance_sync(
+                &app_state.db_pool,
+                &app_state,
+                attempt.id,
+                task_id,
+                project_id,
+            )
+            .await
+            {
+                Ok(_) => {
+                    tracing::info!(
+                        "Successfully created Agent Market instance for task attempt {}",
+                        attempt.id
+                    );
+                    
+                    // Create a setup execution process to show Agent Market initialization in logs
+                    let process_id = Uuid::new_v4();
+                    let create_process = crate::models::execution_process::CreateExecutionProcess {
+                        task_attempt_id: attempt.id,
+                        process_type: ExecutionProcessType::SetupScript,
+                        executor_type: None, // Use default setup script executor
+                        command: "setup script".to_string(),
+                        args: None,
+                        working_directory: project_id.to_string(),
+                    };
+                    
+                    match ExecutionProcess::create(&app_state.db_pool, &create_process, process_id).await {
+                        Ok(process) => {
+                            // Add initialization messages to stdout
+                            let timestamp1 = chrono::Utc::now();
+                            let timestamp2 = timestamp1 + chrono::Duration::milliseconds(100);
+                            let timestamp3 = timestamp2 + chrono::Duration::milliseconds(100);
+                            
+                            let init_messages = vec![
+                                format!(
+                                    r#"{{"timestamp":"{}","type":"user_message","content":"Initializing Agent Market instance..."}}"#,
+                                    timestamp1.to_rfc3339()
+                                ),
+                                format!(
+                                    r#"{{"timestamp":"{}","type":"assistant_message","content":"✅ Successfully created Agent Market instance"}}"#,
+                                    timestamp2.to_rfc3339()
+                                ),
+                                format!(
+                                    r#"{{"timestamp":"{}","type":"assistant_message","content":"Agent Market is now ready to execute your task. The agent will begin working shortly..."}}"#,
+                                    timestamp3.to_rfc3339()
+                                ),
+                            ];
+                            
+                            let full_stdout = init_messages.join("\n");
+                            
+                            if let Err(e) = ExecutionProcess::append_stdout(&app_state.db_pool, process.id, &full_stdout).await {
+                                tracing::error!("Failed to append stdout for Agent Market init: {}", e);
+                            }
+                            
+                            // Create an activity for the Agent Market initialization while it's running
+                            let activity_id = Uuid::new_v4();
+                            let create_activity = CreateTaskAttemptActivity {
+                                execution_process_id: process_id,
+                                status: Some(TaskAttemptStatus::SetupRunning),
+                                note: Some("Initializing Agent Market instance".to_string()),
+                            };
+                            
+                            if let Err(e) = TaskAttemptActivity::create(
+                                &app_state.db_pool,
+                                &create_activity,
+                                activity_id,
+                                TaskAttemptStatus::SetupRunning,
+                            )
+                            .await
+                            {
+                                tracing::error!("Failed to create activity for Agent Market init: {}", e);
+                            }
+                            
+                            // Small delay to ensure logs are visible
+                            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                            
+                            // Now mark the process as completed
+                            if let Err(e) = ExecutionProcess::update_completion(
+                                &app_state.db_pool,
+                                process.id,
+                                ExecutionProcessStatus::Completed,
+                                Some(0),
+                            ).await {
+                                tracing::error!("Failed to update Agent Market init process status: {}", e);
+                            }
+                            
+                            // Update activity to reflect completion
+                            let completion_activity_id = Uuid::new_v4();
+                            let completion_activity = CreateTaskAttemptActivity {
+                                execution_process_id: process_id,
+                                status: Some(TaskAttemptStatus::SetupComplete),
+                                note: Some("Agent Market instance created successfully".to_string()),
+                            };
+                            
+                            if let Err(e) = TaskAttemptActivity::create(
+                                &app_state.db_pool,
+                                &completion_activity,
+                                completion_activity_id,
+                                TaskAttemptStatus::SetupComplete,
+                            )
+                            .await
+                            {
+                                tracing::error!("Failed to create completion activity for Agent Market init: {}", e);
+                            }
+                            
+                            // Mark setup as completed for this attempt
+                            if let Err(e) = TaskAttempt::mark_setup_completed(&app_state.db_pool, attempt.id).await {
+                                tracing::error!("Failed to mark setup completed: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to create execution process for Agent Market init: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
                     tracing::error!(
-                        "Failed to start execution for task attempt {}: {}",
-                        attempt_id,
+                        "Failed to create Agent Market instance for task attempt {}: {}",
+                        attempt.id,
                         e
                     );
+                    
+                    // Return error to frontend instead of continuing
+                    return Ok(ResponseJson(ApiResponse {
+                        success: false,
+                        data: None,
+                        message: Some(format!("Failed to start Agent Market instance: {}", e)),
+                    }));
                 }
-            });
+            }
 
             Ok(ResponseJson(ApiResponse {
                 success: true,
@@ -818,6 +948,23 @@ pub async fn create_followup_attempt(
         return Err(StatusCode::NOT_FOUND);
     }
 
+    // Check Agent Market API key before starting follow-up execution
+    let config = match Config::load(&crate::utils::config_path()) {
+        Ok(config) => config,
+        Err(e) => {
+            tracing::error!("Failed to load config: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    if config.agent_market_api_key.is_none() {
+        return Ok(ResponseJson(ApiResponse {
+            success: false,
+            data: None,
+            message: Some("Agent Market API key is required to run tasks. Please configure your API key in the application settings.".to_string()),
+        }));
+    }
+
     // Start follow-up execution synchronously to catch errors
     match TaskAttempt::start_followup_execution(
         &app_state.db_pool,
@@ -1216,6 +1363,118 @@ pub async fn get_execution_process_normalized_logs(
         data: Some(normalized_conversation),
         message: None,
     }))
+}
+
+/// Create an Agent Market instance for the task attempt (synchronous version that returns errors)
+async fn create_agent_market_instance_sync(
+    pool: &sqlx::SqlitePool,
+    _app_state: &AppState,
+    attempt_id: Uuid,
+    task_id: Uuid,
+    project_id: Uuid,
+) -> Result<(), anyhow::Error> {
+    tracing::info!(
+        "Creating Agent Market instance for task attempt {} (task: {}, project: {})",
+        attempt_id,
+        task_id,
+        project_id
+    );
+
+    // Get the task and project
+    let task = Task::find_by_id(pool, task_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Task not found"))?;
+    
+    let project = Project::find_by_id(pool, project_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Project not found"))?;
+
+    // Load configuration to get API key
+    let config = Config::load(&crate::utils::config_path())?;
+    
+    // Check if Agent Market API key is configured
+    let api_key = config.agent_market_api_key
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Agent Market API key is required to run tasks. Please configure your API key in settings."))?;
+
+    // Create Agent Market client and instance
+    let client = AgentMarketClient::new();
+    
+    // Use a default max reward for now - this could be configurable
+    let max_reward = 1000; // $10.00 in cents
+    
+    // Return error instead of swallowing it
+    client.create_instance(api_key, &task, &project, max_reward).await?;
+    
+    tracing::info!(
+        "Successfully created Agent Market instance for task attempt {}",
+        attempt_id
+    );
+    
+    Ok(())
+}
+
+/// Create an Agent Market instance for the task attempt
+async fn create_agent_market_instance(
+    pool: &sqlx::SqlitePool,
+    _app_state: &AppState,
+    attempt_id: Uuid,
+    task_id: Uuid,
+    project_id: Uuid,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    tracing::info!(
+        "Creating Agent Market instance for task attempt {} (task: {}, project: {})",
+        attempt_id,
+        task_id,
+        project_id
+    );
+
+    // Get the task and project
+    let task = Task::find_by_id(pool, task_id)
+        .await?
+        .ok_or("Task not found")?;
+    
+    let project = Project::find_by_id(pool, project_id)
+        .await?
+        .ok_or("Project not found")?;
+
+    // Load configuration to get API key
+    let config = Config::load(&crate::utils::config_path())?;
+    
+    // Check if Agent Market API key is configured
+    let api_key = config.agent_market_api_key
+        .as_ref()
+        .ok_or("Agent Market API key is required to run tasks. Please configure your API key in settings.")?;
+
+    // Create Agent Market client and instance
+    let client = AgentMarketClient::new();
+    
+    // Use a default max reward for now - this could be configurable
+    let max_reward = 1000; // $10.00 in cents
+    
+    match client.create_instance(api_key, &task, &project, max_reward).await {
+        Ok(response) => {
+            tracing::info!(
+                "Successfully created Agent Market instance for task attempt {}: {:?}",
+                attempt_id,
+                response
+            );
+            
+            // TODO: Store the instance ID in the database if needed for tracking
+            // let instance_id = response.get("id").and_then(|v| v.as_str());
+            
+            Ok(())
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Failed to create Agent Market instance for task attempt {}: {}. Task attempt will continue without Agent Market integration.",
+                attempt_id,
+                e
+            );
+            // Don't fail the task attempt creation if Agent Market integration fails
+            Ok(())
+        }
+    }
 }
 
 pub fn task_attempts_router() -> Router<AppState> {

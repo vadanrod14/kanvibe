@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::{
     app_state::AppState,
     models::{
+        config::Config,
         project::Project,
         task::{CreateTask, CreateTaskAndStart, Task, TaskWithAttemptStatus, UpdateTask},
         task_attempt::{CreateTaskAttempt, TaskAttempt},
@@ -137,6 +138,23 @@ pub async fn create_task_and_start(
         project_id
     );
 
+    // Check Agent Market API key before creating task and attempt
+    let config = match Config::load(&crate::utils::config_path()) {
+        Ok(config) => config,
+        Err(e) => {
+            tracing::error!("Failed to load config: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    if config.agent_market_api_key.is_none() {
+        return Ok(ResponseJson(ApiResponse {
+            success: false,
+            data: None,
+            message: Some("Agent Market API key is required to run tasks. Please configure your API key in the application settings.".to_string()),
+        }));
+    }
+
     // Create the task first
     let create_task_payload = CreateTask {
         project_id: payload.project_id,
@@ -182,56 +200,74 @@ pub async fn create_task_and_start(
                 )
                 .await;
 
-            // Start Agent Market instance asynchronously (don't block the response)
-            let app_state_clone = app_state.clone();
-            let _attempt_id = attempt.id;
-            let task_clone = task.clone();
-            let max_reward = payload.max_reward;
-            tokio::spawn(async move {
-                let config = app_state_clone.get_config().read().await;
-                if let Some(api_key) = config.agent_market_api_key.clone() {
-                    drop(config); // Release the lock early
-                    match Project::find_by_id(&app_state_clone.db_pool, project_id).await {
-                        Ok(Some(project)) => {
-                            let agent_market_client = AgentMarketClient::new();
-                            match agent_market_client
-                                .create_instance(&api_key, &task_clone, &project, max_reward)
-                                .await
-                            {
-                                Ok(instance_response) => {
-                                    tracing::info!(
-                                        "Successfully created Agent Market instance for task {}: {:?}",
-                                        task_id,
-                                        instance_response
-                                    );
-                                }
-                                Err(e) => {
-                                    tracing::error!(
-                                        "Failed to create Agent Market instance for task {}: {}",
-                                        task_id,
-                                        e
-                                    );
-                                }
+            // Validate Agent Market API key and create instance synchronously
+            let config = app_state.get_config().read().await;
+            if let Some(api_key) = config.agent_market_api_key.clone() {
+                drop(config); // Release the lock early
+                
+                // Get the project for Agent Market instance creation
+                match Project::find_by_id(&app_state.db_pool, project_id).await {
+                    Ok(Some(project)) => {
+                        let agent_market_client = AgentMarketClient::new();
+                        match agent_market_client
+                            .create_instance(&api_key, &task, &project, payload.max_reward)
+                            .await
+                        {
+                            Ok(instance_response) => {
+                                tracing::info!(
+                                    "Successfully created Agent Market instance for task {}: {:?}",
+                                    task_id,
+                                    instance_response
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to create Agent Market instance for task {}: {}",
+                                    task_id,
+                                    e
+                                );
+                                
+                                // Return error to frontend instead of continuing
+                                return Ok(ResponseJson(ApiResponse {
+                                    success: false,
+                                    data: None,
+                                    message: Some(format!("Failed to start Agent Market instance: {}", e)),
+                                }));
                             }
                         }
-                        Ok(None) => {
-                            tracing::error!(
-                                "Project {} not found for Agent Market instance",
-                                project_id
-                            );
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "Failed to fetch project {} for Agent Market instance: {}",
-                                project_id,
-                                e
-                            );
-                        }
                     }
-                } else {
-                    tracing::error!("Agent Market API key not configured");
+                    Ok(None) => {
+                        tracing::error!(
+                            "Project {} not found for Agent Market instance",
+                            project_id
+                        );
+                        return Ok(ResponseJson(ApiResponse {
+                            success: false,
+                            data: None,
+                            message: Some("Project not found".to_string()),
+                        }));
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to fetch project {} for Agent Market instance: {}",
+                            project_id,
+                            e
+                        );
+                        return Ok(ResponseJson(ApiResponse {
+                            success: false,
+                            data: None,
+                            message: Some("Failed to fetch project information".to_string()),
+                        }));
+                    }
                 }
-            });
+            } else {
+                tracing::error!("Agent Market API key not configured");
+                return Ok(ResponseJson(ApiResponse {
+                    success: false,
+                    data: None,
+                    message: Some("Agent Market API key not configured".to_string()),
+                }));
+            }
 
             Ok(ResponseJson(ApiResponse {
                 success: true,

@@ -391,6 +391,7 @@ impl ProcessService {
         let child = Self::execute_process(
             &executor_type,
             pool,
+            app_state,
             task_id,
             attempt_id,
             process_id,
@@ -595,6 +596,7 @@ impl ProcessService {
     async fn execute_process(
         executor_type: &crate::executor::ExecutorType,
         pool: &SqlitePool,
+        app_state: &crate::app_state::AppState,
         task_id: Uuid,
         attempt_id: Uuid,
         process_id: Uuid,
@@ -622,7 +624,7 @@ impl ProcessService {
             crate::executor::ExecutorType::CodingAgent(config) => {
                 let executor = config.create_executor();
                 executor
-                    .execute_streaming(pool, task_id, attempt_id, process_id, worktree_path)
+                    .execute_streaming_with_context(pool, app_state, task_id, attempt_id, process_id, worktree_path)
                     .await
             }
             crate::executor::ExecutorType::FollowUpCodingAgent {

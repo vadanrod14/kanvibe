@@ -43,11 +43,17 @@ impl Executor for ClaudeExecutor {
             .await?
             .ok_or_else(|| ExecutorError::ContextCollectionFailed("Project not found".to_string()))?;
 
+        // Get the actual repository URL
+        let repo_url = match self.get_repo_url(&project.git_repo_path).await {
+            Ok(url) => url,
+            Err(_) => project.git_repo_path.clone(), // Fallback to the path if we can't get the URL
+        };
+
         // Try to create GitHub issue if we have a GitHub token and valid repo URL
         let mut background = String::new();
         let config = app_state.get_config().read().await;
         if let Some(github_token) = &config.github.token {
-            if let Ok((repo_owner, repo_name)) = self.parse_repo_url(&project.git_repo_path) {
+            if let Ok((repo_owner, repo_name)) = self.parse_repo_url(&repo_url) {
                 let repo_info = GitHubRepoInfo {
                     owner: repo_owner,
                     repo_name,
@@ -75,7 +81,7 @@ Issue Description:
 
 Please analyze this issue and provide suggestions for resolution.
 Make sure to include "Fixes #{}" in your answer."#,
-                                    project.git_repo_path,
+                                    repo_url,
                                     issue.title,
                                     issue.url,
                                     issue.number,
@@ -119,25 +125,31 @@ Make sure to include "Fixes #{}" in your answer."#,
         }
         drop(config);
 
-        // Build the prompt with optional GitHub issue background
+        // Build the prompt with GitHub issue format (even if issue creation failed)
         let prompt = if background.is_empty() {
-            // No GitHub issue created, use original format
-            if let Some(task_description) = task.description {
-                format!(
-                    r#"project_id: {}
+            // No GitHub issue created, but still use the GitHub issue format
+            let fallback_background = format!(
+                r#"Repository URL: {}
+Issue Title: {}
+Issue URL: N/A (GitHub issue creation failed or not configured)
+Issue Number: N/A
+
+Issue Description:
+{}
+
+Please analyze this issue and provide suggestions for resolution.
+Make sure to include "Fixes #N/A" in your answer."#,
+                repo_url,
+                task.title,
+                task.description.as_deref().unwrap_or("No description provided")
+            );
             
-Task title: {}
-Task description: {}"#,
-                    task.project_id, task.title, task_description
-                )
-            } else {
-                format!(
-                    r#"project_id: {}
-            
-Task title: {}"#,
-                    task.project_id, task.title
-                )
-            }
+            format!(
+                r#"project_id: {}
+
+{}"#,
+                task.project_id, fallback_background
+            )
         } else {
             // GitHub issue created, include background
             format!(
@@ -458,6 +470,29 @@ Task title: {}"#,
 }
 
 impl ClaudeExecutor {
+    /// Get the actual repository URL from a git repo path
+    async fn get_repo_url(&self, repo_path: &str) -> Result<String, &'static str> {
+        use tokio::process::Command;
+        
+        let output = Command::new("git")
+            .args(&["remote", "get-url", "origin"])
+            .current_dir(repo_path)
+            .output()
+            .await
+            .map_err(|_| "Failed to execute git command")?;
+            
+        if !output.status.success() {
+            return Err("Failed to get git remote URL");
+        }
+        
+        let url = String::from_utf8(output.stdout)
+            .map_err(|_| "Invalid UTF-8 in git remote URL")?
+            .trim()
+            .to_string();
+            
+        Ok(url)
+    }
+
     /// Parse GitHub repository URL to extract owner and repo name
     fn parse_repo_url(&self, repo_url: &str) -> Result<(String, String), &'static str> {
         // Handle different GitHub URL formats:

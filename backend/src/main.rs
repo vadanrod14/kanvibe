@@ -17,10 +17,14 @@ use tracing_subscriber::{filter::LevelFilter, prelude::*};
 use vibe_kanban::{sentry_layer, Assets, ScriptAssets, SoundAssets};
 
 mod app_state;
+mod error;
 mod execution_monitor;
 mod executor;
 mod executors;
+mod extractors;
+mod handlers;
 mod mcp;
+mod middleware;
 mod models;
 mod routes;
 mod services;

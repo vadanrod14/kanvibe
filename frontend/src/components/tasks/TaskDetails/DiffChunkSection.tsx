@@ -26,7 +26,7 @@ function DiffChunkSection({
     });
   };
 
-  const getChunkClassName = (chunkType: DiffChunkType) => {
+  const getChunkClassName = (chunkType?: DiffChunkType) => {
     const baseClass = 'font-mono text-sm whitespace-pre flex w-full';
 
     switch (chunkType) {
@@ -40,7 +40,7 @@ function DiffChunkSection({
     }
   };
 
-  const getLineNumberClassName = (chunkType: DiffChunkType) => {
+  const getLineNumberClassName = (chunkType?: DiffChunkType) => {
     const baseClass =
       'flex-shrink-0 w-12 px-1.5 text-xs border-r select-none min-h-[1.25rem] flex items-center';
 
@@ -55,7 +55,7 @@ function DiffChunkSection({
     }
   };
 
-  const getChunkPrefix = (chunkType: DiffChunkType) => {
+  const getChunkPrefix = (chunkType?: DiffChunkType) => {
     switch (chunkType) {
       case 'Insert':
         return '+';

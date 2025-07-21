@@ -5,7 +5,6 @@ import {
   GitBranch as GitBranchIcon,
   Play,
   Search,
-  Settings2,
   X,
 } from 'lucide-react';
 import {
@@ -44,15 +43,15 @@ type Props = {
 function CreateAttempt({
   branches,
   taskAttempts,
-  createAttemptExecutor,
+  createAttemptExecutor: _createAttemptExecutor,
   createAttemptBranch,
-  selectedExecutor,
+  selectedExecutor: _selectedExecutor,
   selectedBranch,
   fetchTaskAttempts,
   setIsInCreateAttemptMode,
   setCreateAttemptBranch,
-  setCreateAttemptExecutor,
-  availableExecutors,
+  setCreateAttemptExecutor: _setCreateAttemptExecutor,
+  availableExecutors: _availableExecutors,
 }: Props) {
   const { task, projectId } = useContext(TaskDetailsContext);
   const { isAttemptRunning } = useContext(TaskAttemptDataContext);

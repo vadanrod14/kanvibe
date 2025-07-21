@@ -13,6 +13,7 @@ pub fn auth_router() -> Router<AppState> {
         .route("/auth/github/device/start", post(device_start))
         .route("/auth/github/device/poll", post(device_poll))
         .route("/auth/github/check", get(github_check_token))
+        .route("/auth/github/repos", get(github_repos))
 }
 
 #[derive(serde::Deserialize)]
@@ -295,6 +296,81 @@ async fn github_check_token(State(app_state): State<AppState>) -> ResponseJson<A
             success: false,
             data: None,
             message: Some("github_token_invalid".to_string()),
+        })
+    }
+}
+
+/// GET /auth/github/repos
+async fn github_repos(State(app_state): State<AppState>) -> ResponseJson<ApiResponse<serde_json::Value>> {
+    let config = app_state.get_config().read().await;
+    let token = config.github.token.clone();
+    drop(config);
+    
+    if let Some(token) = token {
+        let client = reqwest::Client::new();
+        let res = client
+            .get("https://api.github.com/user/repos?sort=updated&per_page=100")
+            .bearer_auth(&token)
+            .header("User-Agent", "vibe-kanban-app")
+            .header("Accept", "application/vnd.github.v3+json")
+            .send()
+            .await;
+        
+        match res {
+            Ok(response) if response.status().is_success() => {
+                match response.json::<serde_json::Value>().await {
+                    Ok(repos) => {
+                        // Transform to the format expected by frontend
+                        let formatted_repos = repos.as_array().map(|repos_array| {
+                            repos_array.iter().map(|repo| {
+                                serde_json::json!({
+                                    "id": repo.get("id"),
+                                    "name": repo.get("name"),
+                                    "full_name": repo.get("full_name"),
+                                    "private": repo.get("private"),
+                                    "html_url": repo.get("html_url"),
+                                    "clone_url": repo.get("clone_url"),
+                                    "ssh_url": repo.get("ssh_url"),
+                                    "description": repo.get("description"),
+                                    "language": repo.get("language"),
+                                    "updated_at": repo.get("updated_at"),
+                                    "owner": {
+                                        "login": repo.get("owner").and_then(|o| o.get("login")),
+                                        "avatar_url": repo.get("owner").and_then(|o| o.get("avatar_url"))
+                                    }
+                                })
+                            }).collect::<Vec<_>>()
+                        }).unwrap_or_default();
+                        
+                        ResponseJson(ApiResponse {
+                            success: true,
+                            data: Some(serde_json::Value::Array(formatted_repos)),
+                            message: None,
+                        })
+                    }
+                    Err(e) => ResponseJson(ApiResponse {
+                        success: false,
+                        data: None,
+                        message: Some(format!("Failed to parse GitHub repositories response: {}", e)),
+                    })
+                }
+            }
+            Ok(response) => ResponseJson(ApiResponse {
+                success: false,
+                data: None,
+                message: Some(format!("GitHub API error: {}", response.status())),
+            }),
+            Err(e) => ResponseJson(ApiResponse {
+                success: false,
+                data: None,
+                message: Some(format!("Failed to fetch GitHub repositories: {}", e)),
+            })
+        }
+    } else {
+        ResponseJson(ApiResponse {
+            success: false,
+            data: None,
+            message: Some("GitHub authentication required".to_string()),
         })
     }
 }

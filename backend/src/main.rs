@@ -212,7 +212,18 @@ fn main() -> anyhow::Result<()> {
                 .route("/", get(index_handler))
                 .route("/*path", get(static_handler))
                 .with_state(app_state)
-                .layer(CorsLayer::permissive())
+                .layer(
+                    CorsLayer::new()
+                        .allow_origin([
+                            "https://vibe-kanban-prod.web.app".parse().unwrap(),
+                            "https://grouplang-firebase.web.app".parse().unwrap(),
+                            "http://localhost:3000".parse().unwrap(),
+                            "http://127.0.0.1:3000".parse().unwrap(),
+                        ])
+                        .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::PUT, axum::http::Method::DELETE, axum::http::Method::OPTIONS])
+                        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION])
+                        .allow_credentials(true)
+                )
                 .layer(NewSentryLayer::new_from_top());
 
             let port = std::env::var("BACKEND_PORT")

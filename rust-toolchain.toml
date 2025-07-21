@@ -1,11 +1,7 @@
 [toolchain]
-channel = "nightly-2025-05-18"
+channel = "1.88"
 components = [
     "rustfmt",
-    "rustc",
-    "rust-analyzer",
-    "rust-src",
-    "rust-std",
-    "cargo",
+    "clippy",
 ]
 profile = "default"

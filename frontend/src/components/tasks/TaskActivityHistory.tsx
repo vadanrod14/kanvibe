@@ -98,7 +98,7 @@ export function TaskActivityHistory({
             <div className="flex items-center gap-3 my-4 rounded-md">
               <Chip dotColor="bg-green-500">New Worktree</Chip>
               <span className="text-sm text-muted-foreground flex-1">
-                {selectedAttempt.worktree_path}
+                Branch: {selectedAttempt.branch}
               </span>
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Clock className="h-3 w-3" />

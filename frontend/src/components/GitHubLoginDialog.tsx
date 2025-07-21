@@ -56,10 +56,17 @@ export function GitHubLoginDialog({
       const poll = async () => {
         try {
           await githubAuthApi.poll(deviceState.device_code);
+          
+          // Save the GitHub auth data (the backend already saved it)
           setPolling(false);
           setDeviceState(null);
           setError(null);
-          window.location.reload(); // reload config
+          
+          // Close the dialog and let the config provider refresh
+          onOpenChange(false);
+          
+          // Trigger a config reload without full page reload
+          window.location.reload();
         } catch (e: any) {
           if (e?.message === 'authorization_pending') {
             timer = setTimeout(poll, (deviceState.interval || 5) * 1000);

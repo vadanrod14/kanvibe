@@ -1,0 +1,12 @@
+FROM node:18-slim
+
+WORKDIR /app
+
+COPY simple-package.json package.json
+RUN npm install
+
+COPY simple-backend.js .
+
+EXPOSE 8080
+
+CMD ["npm", "start"]

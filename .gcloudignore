@@ -1,0 +1,24 @@
+# Ignore node_modules and frontend dist
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Ignore development assets
+dev_assets/
+dev_assets_seed/
+
+# Ignore target directory but keep Cargo.lock
+target/
+
+# Ignore git
+.git/
+
+# Ignore scripts
+scripts/
+build-npm-package.sh
+test-npm-package.sh
+
+# Ignore other unnecessary files
+*.md
+.env*
+pglite-debug.log

@@ -1,5 +1,4 @@
 import {
-  ExternalLink,
   GitBranch as GitBranchIcon,
   History,
   Play,
@@ -43,27 +42,7 @@ import {
   TaskExecutionStateContext,
   TaskSelectedAttemptContext,
 } from '@/components/context/taskDetailsContext.ts';
-import { useConfig } from '@/components/config-provider.tsx';
 
-// Helper function to get the display name for different editor types
-function getEditorDisplayName(editorType: string): string {
-  switch (editorType) {
-    case 'vscode':
-      return 'Visual Studio Code';
-    case 'cursor':
-      return 'Cursor';
-    case 'windsurf':
-      return 'Windsurf';
-    case 'intellij':
-      return 'IntelliJ IDEA';
-    case 'zed':
-      return 'Zed';
-    case 'custom':
-      return 'Custom Editor';
-    default:
-      return 'Editor';
-  }
-}
 
 type Props = {
   setError: Dispatch<SetStateAction<string | null>>;
@@ -83,11 +62,10 @@ function CurrentAttempt({
   selectedAttempt,
   taskAttempts,
   handleEnterCreateAttemptMode,
-  availableExecutors,
+  availableExecutors: _availableExecutors,
 }: Props) {
-  const { task, projectId, handleOpenInEditor, projectHasDevScript } =
+  const { task, projectId, handleOpenInEditor: _handleOpenInEditor, projectHasDevScript } =
     useContext(TaskDetailsContext);
-  const { config } = useConfig();
   const { setSelectedAttempt } = useContext(TaskSelectedAttemptContext);
   const { isStopping, setIsStopping } = useContext(TaskAttemptStoppingContext);
   const { attemptData, fetchAttemptData, isAttemptRunning } = useContext(
@@ -305,11 +283,6 @@ function CurrentAttempt({
     return selectedBranch;
   }, [selectedBranch]);
 
-  // Get display name for the configured editor
-  const editorDisplayName = useMemo(() => {
-    if (!config?.editor?.editor_type) return 'Editor';
-    return getEditorDisplayName(config.editor.editor_type);
-  }, [config?.editor?.editor_type]);
 
   return (
     <div className="space-y-2">

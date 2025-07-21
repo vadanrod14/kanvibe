@@ -25,13 +25,23 @@ import {
   WorktreeDiff,
 } from 'shared/types';
 
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  return '';
+};
+
 export const makeRequest = async (url: string, options: RequestInit = {}) => {
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
   };
 
-  return fetch(url, {
+  const baseUrl = getApiBaseUrl();
+  const fullUrl = baseUrl ? `${baseUrl}${url}` : url;
+
+  return fetch(fullUrl, {
     ...options,
     headers,
   });
@@ -49,13 +59,7 @@ export interface FileSearchResult {
   name: string;
 }
 
-// Directory listing response (matches backend DirectoryListResponse)
-export interface DirectoryListResponse {
-  entries: DirectoryEntry[];
-  current_path: string;
-}
-
-// GitHub Device Flow Type
+// GitHub Device Flow Type (missing from generated types)
 export interface StartGitHubDeviceFlowType {
   device_code: string;
   user_code: string;
@@ -63,6 +67,48 @@ export interface StartGitHubDeviceFlowType {
   expires_in: number;
   interval: number;
 }
+
+// Additional types missing from generated types
+export interface AttemptData {
+  attempt: TaskAttempt;
+  processes: ExecutionProcessSummary[];
+}
+
+// GitHub Repository Type
+export interface GitHubRepository {
+  id: number;
+  name: string;
+  full_name: string;
+  private: boolean;
+  html_url: string;
+  clone_url: string;
+  ssh_url: string;
+  description: string | null;
+  language: string | null;
+  updated_at: string;
+  owner: {
+    login: string;
+    avatar_url: string;
+  };
+}
+
+export interface ProcessedLine {
+  lineNumber?: number;
+  content: string;
+  type: 'add' | 'delete' | 'context';
+}
+
+export interface ProcessedSection {
+  header: string;
+  lines: ProcessedLine[];
+}
+
+// Directory listing response (matches backend DirectoryListResponse)
+export interface DirectoryListResponse {
+  entries: DirectoryEntry[];
+  current_path: string;
+}
+
 
 export class ApiError extends Error {
   constructor(
@@ -509,6 +555,10 @@ export const githubAuthApi = {
       headers: { 'Content-Type': 'application/json' },
     });
     return handleApiResponse<string>(response);
+  },
+  getRepositories: async (): Promise<GitHubRepository[]> => {
+    const response = await makeRequest('/api/auth/github/repos');
+    return handleApiResponse<GitHubRepository[]>(response);
   },
 };
 

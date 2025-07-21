@@ -112,6 +112,38 @@ export type NormalizedEntryType = { "type": "user_message" } | { "type": "assist
 
 export type ActionType = { "action": "file_read", path: string, } | { "action": "file_write", path: string, } | { "action": "command_run", command: string, } | { "action": "search", query: string, } | { "action": "web_fetch", url: string, } | { "action": "task_create", description: string, } | { "action": "other", description: string, };
 
+// Frontend-specific types
+export type StartGitHubDeviceFlowType = {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+};
+
+export type AttemptData = {
+  attempt?: TaskAttempt;
+  processes: ExecutionProcessSummary[];
+  activities: TaskAttemptActivityWithPrompt[];
+  runningProcessDetails: Record<string, ExecutionProcess>;
+};
+
+export type ProcessedLine = {
+  lineNumber?: number;
+  oldLineNumber?: number;
+  newLineNumber?: number;
+  content: string;
+  type?: 'add' | 'delete' | 'context';
+  chunkType?: DiffChunkType;
+};
+
+export type ProcessedSection = {
+  header?: string;
+  lines: ProcessedLine[];
+  type?: 'context' | 'change' | 'expanded';
+  expandKey?: string;
+};
+
 // Generated constants
 export const EXECUTOR_TYPES: string[] = [
     "echo",

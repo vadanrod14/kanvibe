@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "grouplang-firebase"
+  },
+  "targets": {
+    "vibe-kanban-prod": {
+      "hosting": {
+        "main": [
+          "vibe-kanban-prod"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

@@ -1,0 +1,15 @@
+target/
+node_modules/
+frontend/dist/
+frontend/node_modules/
+.git/
+.gitignore
+README.md
+*.md
+.env*
+dev_assets/
+dev_assets_seed/
+test-npm-package.sh
+build-npm-package.sh
+scripts/
+npx-cli/
